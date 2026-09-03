@@ -137,11 +137,15 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        source: "/sw.js",
+        headers: [{ key: "Cache-Control", value: "no-cache" }],
+      },
+      {
         source: "/api/:path*",
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
       {
-        source: "/:path((?!_next/static|_next/image|api).*)",
+        source: "/:path((?!_next/static|_next/image|api|sw\\.js).*)",
         headers: [
           {
             key: "Cache-Control",

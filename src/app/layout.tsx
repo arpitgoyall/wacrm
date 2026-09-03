@@ -6,6 +6,7 @@ import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
+import { PwaRegister } from "@/components/pwa-register";
 import {
   DEFAULT_MODE,
   DEFAULT_THEME,
@@ -22,8 +23,8 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "wacrm",
-    template: "%s — wacrm",
+    default: "Aerocadmy WhatsApp",
+    template: "%s — Aerocadmy WhatsApp",
   },
   description: "Self-hostable CRM template for WhatsApp.",
   robots: {
@@ -38,11 +39,17 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
+  appleWebApp: {
+    capable: true,
+    title: "Aerocadmy WhatsApp",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {
   themeColor: "#020617",
   colorScheme: "dark light",
+  viewportFit: "cover",
 };
 
 // Inline boot script — runs before React hydrates so the user's
@@ -108,6 +115,7 @@ export default async function RootLayout({
         />
       </head>
       <body className="min-h-full bg-background text-foreground font-sans">
+        <PwaRegister />
         <NextIntlClientProvider messages={messages} locale={locale}>
           <ThemeProvider>
             {children}
