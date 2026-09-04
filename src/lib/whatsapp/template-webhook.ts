@@ -1,15 +1,17 @@
 /**
  * Handlers for Meta's template-lifecycle webhook events.
  *
- * Meta delivers three template-related webhook fields, each with a
+ * Meta delivers four template-related webhook fields, each with a
  * different `value` shape:
  *
  *   - message_template_status_update      — APPROVED / REJECTED / PAUSED / etc.
  *   - message_template_quality_update     — GREEN / YELLOW / RED quality score
  *   - message_template_components_update  — Meta auto-modified the template
+ *   - template_category_update            — MARKETING / UTILITY / AUTHENTICATION category
  *
  * The route handler at /api/whatsapp/webhook receives every change and
- * delegates here when `change.field` starts with `message_template_`.
+ * delegates here when `change.field` is one of the supported
+ * `message_template_*` fields.
  *
  * ─── Setup requirement (out-of-band) ──────────────────────────────
  * These fields are NOT subscribed to by default. In Meta App Dashboard
@@ -34,6 +36,7 @@ const TEMPLATE_WEBHOOK_FIELDS = new Set([
   'message_template_status_update',
   'message_template_quality_update',
   'message_template_components_update',
+  'template_category_update',
 ])
 
 export function isTemplateWebhookField(field: string): boolean {
@@ -60,6 +63,14 @@ interface TemplateComponentsUpdateValue {
   message_template_id?: string | number
   message_template_name?: string
   message_template_language?: string
+}
+
+interface TemplateCategoryUpdateValue {
+  message_template_id?: string | number
+  message_template_name?: string
+  message_template_language?: string
+  previous_category?: string
+  new_category?: string
 }
 
 export interface TemplateWebhookChange {
@@ -96,6 +107,12 @@ export async function handleTemplateWebhookChange(
     case 'message_template_components_update':
       handleComponentsUpdate(
         change.value as TemplateComponentsUpdateValue,
+      )
+      return
+    case 'template_category_update':
+      await handleCategoryUpdate(
+        change.value as TemplateCategoryUpdateValue,
+        supabase,
       )
       return
   }
@@ -189,6 +206,45 @@ async function handleQualityUpdate(
   if (error) {
     console.error(
       '[template-webhook] quality update failed for meta_template_id',
+      metaTemplateId,
+      error.message,
+    )
+  }
+}
+
+async function handleCategoryUpdate(
+  value: TemplateCategoryUpdateValue,
+  supabase: SupabaseClient,
+): Promise<void> {
+  const metaTemplateId =
+    value.message_template_id !== undefined
+      ? String(value.message_template_id)
+      : null
+  const category =
+    value.new_category?.toUpperCase() === 'MARKETING'
+      ? 'Marketing'
+      : value.new_category?.toUpperCase() === 'UTILITY'
+        ? 'Utility'
+        : value.new_category?.toUpperCase() === 'AUTHENTICATION'
+          ? 'Authentication'
+          : null
+
+  if (!metaTemplateId || !category) {
+    console.warn(
+      '[template-webhook] category update missing message_template_id or valid new_category:',
+      value,
+    )
+    return
+  }
+
+  const { error } = await supabase
+    .from('message_templates')
+    .update({ category })
+    .eq('meta_template_id', metaTemplateId)
+
+  if (error) {
+    console.error(
+      '[template-webhook] category update failed for meta_template_id',
       metaTemplateId,
       error.message,
     )

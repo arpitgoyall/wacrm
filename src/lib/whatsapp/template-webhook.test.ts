@@ -57,10 +57,13 @@ function makeSupabaseStub(
 }
 
 describe('isTemplateWebhookField', () => {
-  it('recognises the three template fields', () => {
+  it('recognises the four template fields', () => {
     expect(isTemplateWebhookField('message_template_status_update')).toBe(true);
     expect(isTemplateWebhookField('message_template_quality_update')).toBe(true);
     expect(isTemplateWebhookField('message_template_components_update')).toBe(
+      true,
+    );
+    expect(isTemplateWebhookField('template_category_update')).toBe(
       true,
     );
   });
@@ -233,6 +236,40 @@ describe('handleTemplateWebhookChange — components update', () => {
     );
     expect(calls).toHaveLength(0);
     expect(info).toHaveBeenCalled();
+  });
+});
+
+describe('handleTemplateWebhookChange — category update', () => {
+  it('persists Meta category values using the local title-case format', async () => {
+    const { stub, calls } = makeSupabaseStub();
+    await handleTemplateWebhookChange(
+      {
+        field: 'template_category_update',
+        value: {
+          message_template_id: 12,
+          previous_category: 'MARKETING',
+          new_category: 'UTILITY',
+        },
+      },
+      stub,
+    );
+    expect(calls[0].update).toEqual({ category: 'Utility' });
+    expect(calls[0].filter).toEqual({
+      column: 'meta_template_id',
+      value: '12',
+    });
+  });
+
+  it('ignores missing or unsupported categories', async () => {
+    const { stub, calls } = makeSupabaseStub();
+    await handleTemplateWebhookChange(
+      {
+        field: 'template_category_update',
+        value: { message_template_id: '12', new_category: 'UNKNOWN' },
+      },
+      stub,
+    );
+    expect(calls).toHaveLength(0);
   });
 });
 
