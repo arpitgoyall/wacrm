@@ -19,6 +19,24 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const targetUrl = new URL(
+    event.notification.data?.url || "/inbox",
+    self.location.origin,
+  ).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existingClient = clients.find((client) => "focus" in client);
+      if (existingClient) {
+        return existingClient.navigate(targetUrl).then((client) => client?.focus());
+      }
+      return self.clients.openWindow(targetUrl);
+    }),
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
