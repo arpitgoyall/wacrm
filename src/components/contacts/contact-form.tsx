@@ -153,6 +153,7 @@ export function ContactForm({
         const { error } = await supabase
           .from('contacts')
           .update({
+            assigned_agent_id: user.id,
             name: name.trim() || null,
             phone: phone.trim(),
             email: email.trim() || null,
@@ -167,6 +168,7 @@ export function ContactForm({
           .insert({
             user_id: user.id,
             account_id: accountId,
+            assigned_agent_id: user.id,
             name: name.trim() || null,
             phone: phone.trim(),
             email: email.trim() || null,
