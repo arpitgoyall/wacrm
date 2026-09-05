@@ -72,6 +72,7 @@ export function ConversationList({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [agentNames, setAgentNames] = useState<Record<string, string>>({});
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -139,6 +140,33 @@ export function ConversationList({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+
+    (async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, email")
+        .order("full_name");
+      if (cancelled || !data) return;
+
+      const names: Record<string, string> = {};
+      for (const profile of data as {
+        user_id: string;
+        full_name: string | null;
+        email: string | null;
+      }[]) {
+        names[profile.user_id] = profile.full_name || profile.email || profile.user_id;
+      }
+      setAgentNames(names);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resyncToken]);
 
   // Company options are derived from the loaded conversations — there's no
   // separate companies table, and only companies with a live conversation
@@ -413,6 +441,7 @@ export function ConversationList({
                 conversation={conv}
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
+                assigneeName={conv.assigned_agent_id ? agentNames[conv.assigned_agent_id] : undefined}
                 t={t}
               />
             ))}
@@ -427,6 +456,7 @@ interface ConversationItemProps {
   conversation: Conversation;
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
+  assigneeName?: string;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -434,6 +464,7 @@ function ConversationItem({
   conversation,
   isActive,
   onSelect,
+  assigneeName,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -498,6 +529,11 @@ function ConversationItem({
             />
           </div>
         </div>
+        {assigneeName && (
+          <p className="mt-1 truncate text-[10px] text-muted-foreground">
+            {t("assignedTo", { name: assigneeName })}
+          </p>
+        )}
       </div>
     </button>
   );
