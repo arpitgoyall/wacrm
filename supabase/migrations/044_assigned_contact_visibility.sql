@@ -1,9 +1,10 @@
 -- ============================================================
 -- ASSIGNED CONTACT VISIBILITY
 -- ============================================================
--- Owners/admins see all contacts. Agents see only contacts assigned
--- to their auth user. Agents may create and update assigned contacts,
--- but only owners/admins may delete contacts.
+-- Owners/admins/viewers see all contacts (viewers are read-only
+-- oversight, same as before this migration). Agents see only contacts
+-- assigned to their auth user. Agents may create and update assigned
+-- contacts, but only owners/admins may delete contacts.
 
 ALTER TABLE contacts
   ADD COLUMN IF NOT EXISTS assigned_agent_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
@@ -20,7 +21,7 @@ CREATE POLICY contacts_select ON contacts FOR SELECT
       WHERE p.user_id = auth.uid()
         AND p.account_id = contacts.account_id
         AND (
-          p.account_role IN ('owner', 'admin')
+          p.account_role IN ('owner', 'admin', 'viewer')
           OR contacts.assigned_agent_id = auth.uid()
           OR EXISTS (
             SELECT 1

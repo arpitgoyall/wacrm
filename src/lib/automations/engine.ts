@@ -591,8 +591,22 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       const { data: deals } = await dealQuery
       const dealId = deals?.[0]?.id
       if (!dealId) return 'no deal resolved'
-      await db.from('deals').update({ assigned_to: agentId }).eq('id', dealId)
-      return `deal ${dealId} assigned to ${agentId}`
+      // deals.assigned_to is a FK to profiles.id, but resolveAssignmentAgent
+      // resolves to the agent's auth user_id (shared with assign_conversation,
+      // whose assigned_agent_id column IS keyed by user_id) — translate here.
+      const { data: profile } = await db
+        .from('profiles')
+        .select('id')
+        .eq('account_id', args.automation.account_id)
+        .eq('user_id', agentId)
+        .maybeSingle()
+      if (!profile) return 'no agent profile resolved'
+      const { error: assignError } = await db
+        .from('deals')
+        .update({ assigned_to: profile.id })
+        .eq('id', dealId)
+      if (assignError) throw new Error(`assign_deal: ${assignError.message}`)
+      return `deal ${dealId} assigned to ${profile.id}`
     }
 
     case 'send_webhook': {
@@ -643,7 +657,18 @@ async function resolveAssignmentAgent(
 ): Promise<string | undefined> {
   if (cfg.mode === 'specific') return cfg.agent_id
 
-  const cached = args.context.vars?.[SHARED_ASSIGNMENT_KEY]
+  // Cache round-robin results per agent pool, not globally per execution —
+  // two round_robin steps in the same run with different agent_ids pools
+  // must resolve independently. Steps sharing a pool (including the "any
+  // agent" pool when agent_ids is empty) still resolve to the same agent,
+  // which is the point of sharing the cache at all.
+  const poolKey =
+    Array.isArray(cfg.agent_ids) && cfg.agent_ids.length > 0
+      ? [...cfg.agent_ids].sort().join(',')
+      : '*'
+  const cacheKey = `${SHARED_ASSIGNMENT_KEY}:${poolKey}`
+
+  const cached = args.context.vars?.[cacheKey]
   if (typeof cached === 'string' && cached) return cached
 
   let profileQuery = supabaseAdmin()
@@ -663,7 +688,7 @@ async function resolveAssignmentAgent(
 
   args.context.vars = {
     ...(args.context.vars ?? {}),
-    [SHARED_ASSIGNMENT_KEY]: agentId,
+    [cacheKey]: agentId,
   }
   return agentId
 }

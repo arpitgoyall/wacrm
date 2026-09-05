@@ -1,8 +1,8 @@
 -- ============================================================
 -- ASSIGNED CONVERSATION VISIBILITY
 -- ============================================================
--- Owners can see every conversation in their account. Other members
--- can see only conversations assigned to their own user id.
+-- Owners and admins can see every conversation in their account. Other
+-- members can see only conversations assigned to their own user id.
 
 CREATE OR REPLACE FUNCTION can_view_conversation(
   target_account_id UUID,
@@ -19,7 +19,7 @@ AS $$
     WHERE p.user_id = auth.uid()
       AND p.account_id = target_account_id
       AND (
-        p.account_role = 'owner'
+        p.account_role IN ('owner', 'admin')
         OR p.user_id = target_assigned_agent_id
       )
   );

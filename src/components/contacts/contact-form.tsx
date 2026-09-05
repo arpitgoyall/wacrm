@@ -153,7 +153,6 @@ export function ContactForm({
         const { error } = await supabase
           .from('contacts')
           .update({
-            assigned_agent_id: user.id,
             name: name.trim() || null,
             phone: phone.trim(),
             email: email.trim() || null,

@@ -20,6 +20,7 @@ import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import {
   resolveSection,
+  SECTION_META,
   type SettingsSection,
 } from '@/components/settings/settings-sections';
 
@@ -54,7 +55,7 @@ function SettingsPageInner() {
 
   useEffect(() => {
     if (profileLoading || accountRole === null) return;
-    if (section === 'whatsapp' || section === 'members' || section === 'api') {
+    if (SECTION_META[section].adminOnly) {
       if (accountRole !== 'owner' && accountRole !== 'admin') {
         router.replace('/settings?tab=overview', { scroll: false });
       }
