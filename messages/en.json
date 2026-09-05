@@ -1142,6 +1142,7 @@
         "addTag": "Add tag",
         "removeTag": "Remove tag",
         "tagUuidPlaceholder": "Tag UUID",
+        "noTagsAvailable": "No tags available. Create a tag in Settings first.",
         "thenAdvanceTo": "Then advance to",
         "mediaTypeLabel": "Media type",
         "imageLabel": "Image (PNG, JPEG, WebP)",

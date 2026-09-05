@@ -652,7 +652,8 @@ function ConditionForm({
                 ? t("tagLabel")
                 : t("fieldLabel")}
           </label>
-          {subject === "tag" && tags.length > 0 ? (
+          {subject === "tag" ? (
+            tags.length > 0 ? (
             <Select
               value={cfg.subject_key ?? ""}
               onValueChange={(v) => onUpdateConfig({ subject_key: v })}
@@ -668,6 +669,11 @@ function ConditionForm({
                 ))}
               </SelectContent>
             </Select>
+            ) : (
+              <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                {t("noTagsAvailable")}
+              </p>
+            )
           ) : subject === "contact_field" ? (
             <Select
               value={cfg.subject_key ?? ""}
@@ -689,7 +695,7 @@ function ConditionForm({
               onChange={(e) =>
                 onUpdateConfig({ subject_key: e.target.value })
               }
-              placeholder={subject === "var" ? t("varKeyPlaceholder") : t("tagUuidPlaceholder")}
+              placeholder={t("varKeyPlaceholder")}
               className="bg-muted font-mono text-xs"
             />
           )}
@@ -817,12 +823,9 @@ function SetTagForm({
               </SelectContent>
             </Select>
           ) : (
-            <Input
-              value={cfg.tag_id ?? ""}
-              onChange={(e) => onUpdateConfig({ tag_id: e.target.value })}
-              placeholder={t("tagUuidPlaceholder")}
-              className="bg-muted font-mono text-xs"
-            />
+            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {t("noTagsAvailable")}
+            </p>
           )}
         </div>
       </div>
@@ -839,8 +842,7 @@ function SetTagForm({
 
 /**
  * Shared loader for both `condition` (subject=tag) and `set_tag`.
- * Falls back to raw UUID input if the endpoint is absent on older
- * deployments — the form remains authorable in that case.
+ * The selected tag name is displayed while its UUID is stored in config.
  */
 function useUserTags(): UserTag[] {
   const [tags, setTags] = useState<UserTag[]>([]);
