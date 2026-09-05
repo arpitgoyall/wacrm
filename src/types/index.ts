@@ -547,6 +547,7 @@ export interface TagStepConfig {
 export interface AssignConversationStepConfig {
   mode: 'specific' | 'round_robin';
   agent_id?: string;
+  agent_ids?: string[];
 }
 
 export interface UpdateContactFieldStepConfig {

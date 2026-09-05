@@ -979,6 +979,8 @@
           "specific": "Specific agent"
         },
         "agentLabel": "Agent",
+        "roundRobinAgentsLabel": "Round-robin agents",
+        "noAgentsAvailable": "No agents available.",
         "fieldLabel": "Field",
         "valueLabel": "Value",
         "placeholderValue": "Text or {{ vars.x }} / {{ message.text }}",

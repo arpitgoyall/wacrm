@@ -452,6 +452,46 @@ function AgentSelect({
   )
 }
 
+/** Multi-select agent pool for round-robin assignment. Stores user ids while
+ * showing teammate names; only account members with the agent role are listed. */
+function AgentMultiSelect({
+  values,
+  onChange,
+  t,
+}: {
+  values: string[]
+  onChange: (v: string[]) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const { members } = useResources()
+  const agents = members.filter((member) => member.role === "agent")
+
+  if (agents.length === 0) {
+    return (
+      <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+        {t("config.noAgentsAvailable")}
+      </p>
+    )
+  }
+
+  return (
+    <select
+      multiple
+      value={values}
+      onChange={(e) =>
+        onChange(Array.from(e.target.selectedOptions, (option) => option.value))
+      }
+      className={`${SELECT_CLASS} min-h-24`}
+    >
+      {agents.map((member) => (
+        <option key={member.user_id} value={member.user_id}>
+          {member.full_name || member.email || member.user_id}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 /** Pipeline + stage picker for Create Deal. The automation stores ids because
  *  the engine writes directly to deals, but authors should choose by name. */
 function DealPipelineFields({
@@ -1364,6 +1404,15 @@ function StepEditor({
               <AgentSelect
                 value={(cfg.agent_id as string) ?? ""}
                 onChange={(v) => set({ agent_id: v })}
+                t={t}
+              />
+            </FieldBlock>
+          )}
+          {cfg.mode === "round_robin" && (
+            <FieldBlock label={t("config.roundRobinAgentsLabel")}>
+              <AgentMultiSelect
+                values={Array.isArray(cfg.agent_ids) ? (cfg.agent_ids as string[]) : []}
+                onChange={(v) => set({ agent_ids: v })}
                 t={t}
               />
             </FieldBlock>

@@ -485,15 +485,20 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('assign_conversation needs a contact')
       let agentId = cfg.agent_id
       if (cfg.mode === 'round_robin') {
-        // Pick any member of the account. The existing implementation
-        // only ever returned the automation's author; preserving that
-        // shape until a real round-robin algorithm replaces it.
-        const { data: profiles } = await db
+        let profileQuery = db
           .from('profiles')
           .select('user_id')
           .eq('account_id', args.automation.account_id)
-          .limit(1)
-        agentId = profiles?.[0]?.user_id
+          .eq('account_role', 'agent')
+          .order('created_at', { ascending: true })
+        if (Array.isArray(cfg.agent_ids) && cfg.agent_ids.length > 0) {
+          profileQuery = profileQuery.in('user_id', cfg.agent_ids)
+        }
+        const { data: profiles } = await profileQuery
+        if (profiles && profiles.length > 0) {
+          const nextIndex = args.automation.execution_count % profiles.length
+          agentId = profiles[nextIndex]?.user_id
+        }
       }
       if (!agentId) return 'no agent resolved'
       await db

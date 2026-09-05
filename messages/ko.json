@@ -979,6 +979,8 @@
           "specific": "특정 상담원"
         },
         "agentLabel": "상담원",
+        "roundRobinAgentsLabel": "라운드 로빈 상담원",
+        "noAgentsAvailable": "사용 가능한 상담원이 없습니다.",
         "fieldLabel": "필드",
         "valueLabel": "값",
         "placeholderValue": "텍스트 또는 {{ vars.x }} / {{ message.text }}",
