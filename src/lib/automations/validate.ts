@@ -107,6 +107,14 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({ path: `${path}.title`, message: 'title is required' })
       }
       break
+    case 'assign_deal':
+      if (c.mode === 'specific' && !nonEmpty(c.agent_id)) {
+        issues.push({
+          path: `${path}.agent_id`,
+          message: 'agent is required when mode is "specific"',
+        })
+      }
+      break
     case 'wait':
       if (typeof c.amount !== 'number' || !Number.isFinite(c.amount) || c.amount <= 0) {
         issues.push({ path: `${path}.amount`, message: 'wait amount must be greater than 0' })

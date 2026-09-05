@@ -16,6 +16,7 @@ import type {
   UpdateContactFieldStepConfig,
   WaitStepConfig,
   CreateDealStepConfig,
+  AssignDealStepConfig,
   AssignConversationStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
@@ -483,23 +484,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'assign_conversation': {
       const cfg = step.step_config as AssignConversationStepConfig
       if (!args.contactId) throw new Error('assign_conversation needs a contact')
-      let agentId = cfg.agent_id
-      if (cfg.mode === 'round_robin') {
-        let profileQuery = db
-          .from('profiles')
-          .select('user_id')
-          .eq('account_id', args.automation.account_id)
-          .eq('account_role', 'agent')
-          .order('created_at', { ascending: true })
-        if (Array.isArray(cfg.agent_ids) && cfg.agent_ids.length > 0) {
-          profileQuery = profileQuery.in('user_id', cfg.agent_ids)
-        }
-        const { data: profiles } = await profileQuery
-        if (profiles && profiles.length > 0) {
-          const nextIndex = args.automation.execution_count % profiles.length
-          agentId = profiles[nextIndex]?.user_id
-        }
-      }
+      const agentId = await resolveAssignmentAgent(args, cfg)
       if (!agentId) return 'no agent resolved'
       await db
         .from('conversations')
@@ -589,6 +574,27 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       return 'deal created'
     }
 
+    case 'assign_deal': {
+      const cfg = step.step_config as AssignDealStepConfig
+      if (!args.contactId) throw new Error('assign_deal needs a contact')
+      const agentId = await resolveAssignmentAgent(args, cfg)
+      if (!agentId) return 'no agent resolved'
+      let dealQuery = db
+        .from('deals')
+        .select('id')
+        .eq('account_id', args.automation.account_id)
+        .eq('contact_id', args.contactId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (cfg.pipeline_id) dealQuery = dealQuery.eq('pipeline_id', cfg.pipeline_id)
+      if (cfg.stage_id) dealQuery = dealQuery.eq('stage_id', cfg.stage_id)
+      const { data: deals } = await dealQuery
+      const dealId = deals?.[0]?.id
+      if (!dealId) return 'no deal resolved'
+      await db.from('deals').update({ assigned_to: agentId }).eq('id', dealId)
+      return `deal ${dealId} assigned to ${agentId}`
+    }
+
     case 'send_webhook': {
       const cfg = step.step_config as SendWebhookStepConfig
       if (!cfg.url) throw new Error('send_webhook needs url')
@@ -627,6 +633,39 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     default:
       return `unknown step: ${step.step_type}`
   }
+}
+
+const SHARED_ASSIGNMENT_KEY = '_automation_assigned_agent_id'
+
+async function resolveAssignmentAgent(
+  args: ExecuteArgs,
+  cfg: AssignConversationStepConfig | AssignDealStepConfig,
+): Promise<string | undefined> {
+  if (cfg.mode === 'specific') return cfg.agent_id
+
+  const cached = args.context.vars?.[SHARED_ASSIGNMENT_KEY]
+  if (typeof cached === 'string' && cached) return cached
+
+  let profileQuery = supabaseAdmin()
+    .from('profiles')
+    .select('user_id')
+    .eq('account_id', args.automation.account_id)
+    .eq('account_role', 'agent')
+    .order('created_at', { ascending: true })
+  if (Array.isArray(cfg.agent_ids) && cfg.agent_ids.length > 0) {
+    profileQuery = profileQuery.in('user_id', cfg.agent_ids)
+  }
+  const { data: profiles } = await profileQuery
+  if (!profiles || profiles.length === 0) return undefined
+
+  const agentId = profiles[args.automation.execution_count % profiles.length]?.user_id
+  if (!agentId) return undefined
+
+  args.context.vars = {
+    ...(args.context.vars ?? {}),
+    [SHARED_ASSIGNMENT_KEY]: agentId,
+  }
+  return agentId
 }
 
 // ------------------------------------------------------------

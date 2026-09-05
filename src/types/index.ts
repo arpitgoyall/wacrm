@@ -478,6 +478,7 @@ export type AutomationStepType =
   | 'assign_conversation'
   | 'update_contact_field'
   | 'create_deal'
+  | 'assign_deal'
   | 'wait'
   | 'condition'
   | 'send_webhook'
@@ -570,6 +571,14 @@ export interface CreateDealStepConfig {
   value?: number;
 }
 
+export interface AssignDealStepConfig {
+  pipeline_id?: string;
+  stage_id?: string;
+  mode: 'specific' | 'round_robin';
+  agent_id?: string;
+  agent_ids?: string[];
+}
+
 export interface WaitStepConfig {
   amount: number;
   unit: 'minutes' | 'hours' | 'days';
@@ -604,6 +613,7 @@ export type AutomationStepConfig =
   | AssignConversationStepConfig
   | UpdateContactFieldStepConfig
   | CreateDealStepConfig
+  | AssignDealStepConfig
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
