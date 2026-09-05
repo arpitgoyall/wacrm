@@ -26,7 +26,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import type { AccountRole } from "@/lib/auth/roles";
+import { hasMinRole, type AccountRole } from "@/lib/auth/roles";
 
 // Per-role chip metadata used in the sidebar's account strip + the
 // Members tab roster. Keeping this near both consumers in a single
@@ -211,6 +211,15 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.map((item) => {
+              const adminOnly =
+                item.href === "/broadcasts" ||
+                item.href === "/automations" ||
+                item.href === "/flows" ||
+                item.href === "/agents";
+              if (adminOnly && (!accountRole || !hasMinRole(accountRole, "admin"))) {
+                return null;
+              }
+
               const isActive =
                 pathname === item.href ||
                 (item.href !== "/dashboard" && pathname.startsWith(item.href));

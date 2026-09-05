@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useMemo, type ReactNode } from 'react';
+import { Suspense, useEffect, useMemo, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
@@ -42,7 +42,7 @@ export default function SettingsPage() {
 function SettingsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { defaultCurrency } = useAuth();
+  const { defaultCurrency, accountRole, profileLoading } = useAuth();
   const { mode } = useTheme();
   const t = useTranslations('Settings');
 
@@ -51,6 +51,15 @@ function SettingsPageInner() {
   // app sidebar/header working. Legacy tab values (tags, custom-fields)
   // resolve onto their new home; unknown/empty → the Overview landing.
   const section = resolveSection(searchParams.get('tab'));
+
+  useEffect(() => {
+    if (profileLoading || accountRole === null) return;
+    if (section === 'whatsapp' || section === 'members' || section === 'api') {
+      if (accountRole !== 'owner' && accountRole !== 'admin') {
+        router.replace('/settings?tab=overview', { scroll: false });
+      }
+    }
+  }, [accountRole, profileLoading, router, section]);
 
   const go = (next: SettingsSection) => {
     const params = new URLSearchParams(searchParams.toString());
