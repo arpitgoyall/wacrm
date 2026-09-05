@@ -304,6 +304,7 @@ function validateNode(
     case "send_buttons": {
       const cfg = node.config as {
         text?: string;
+        var_key?: string;
         buttons?: Array<{
           reply_id?: string;
           title?: string;
@@ -317,6 +318,15 @@ function validateNode(
           node_key: node.node_key,
           field: "text",
           message: "Send-buttons node needs a text body.",
+        });
+      }
+      if (cfg.var_key?.trim() && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cfg.var_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "var_key",
+          message: `var_key "${cfg.var_key}" must be alphanumeric+underscore and start with a letter or underscore.`,
         });
       }
       const btns = cfg.buttons ?? [];
@@ -403,6 +413,7 @@ function validateNode(
       const cfg = node.config as {
         text?: string;
         button_label?: string;
+        var_key?: string;
         sections?: Array<{
           title?: string;
           rows?: Array<{
@@ -420,6 +431,15 @@ function validateNode(
           node_key: node.node_key,
           field: "text",
           message: "Send-list node needs a text body.",
+        });
+      }
+      if (cfg.var_key?.trim() && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(cfg.var_key)) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "var_key",
+          message: `var_key "${cfg.var_key}" must be alphanumeric+underscore and start with a letter or underscore.`,
         });
       }
       if (!cfg.button_label?.trim()) {

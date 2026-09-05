@@ -1110,6 +1110,7 @@
         "varKeyLabel": "Variable key (stored in flow_runs.vars; alphanumeric + underscore)",
         "varKeyPlaceholder": "e.g. name, email, company",
         "varKeyHelp": "Interpolate in downstream prompts and handoff notes with",
+        "varKeyOptionalLabel": "Store tapped option's title as a variable (optional)",
         "advanceAfterCapture": "After capturing, advance to",
         "internalNote": "Internal note (for the agent picking up)",
         "endNodeHelp": "Terminal node. When the runner reaches this node the run is marked complete. No config needed.",

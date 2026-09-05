@@ -39,6 +39,13 @@ export interface SendButtonsNodeConfig {
   /** Optional header / footer lines around the buttons. */
   header_text?: string;
   footer_text?: string;
+  /**
+   * Optional key under which to store the TAPPED button's `title` in
+   * `flow_runs.vars` (same store + interpolation syntax as
+   * `CollectInputNodeConfig.var_key`). Unset means "route only" — the
+   * historical behaviour, unchanged when this is absent.
+   */
+  var_key?: string;
   /** 1-3 buttons; Meta cap enforced in meta-api validation. */
   buttons: Array<{
     /** Stable id sent back by Meta when this button is tapped. */
@@ -56,6 +63,11 @@ export interface SendListNodeConfig {
   button_label: string;
   header_text?: string;
   footer_text?: string;
+  /**
+   * Optional key under which to store the TAPPED row's `title` in
+   * `flow_runs.vars`. See `SendButtonsNodeConfig.var_key`.
+   */
+  var_key?: string;
   /** 1-10 rows TOTAL across sections; cap enforced in meta-api. */
   sections: Array<{
     title?: string;

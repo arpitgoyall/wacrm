@@ -90,6 +90,31 @@ export function matchReplyId(
 }
 
 /**
+ * Looks up the visible label of the tapped button/row, for the optional
+ * `var_key` capture on `send_buttons`/`send_list`. Kept independent of
+ * `matchReplyId` (rather than changing its return type) so its existing
+ * call sites and tests are undisturbed.
+ */
+export function matchReplyTitle(
+  node: { node_type: string; config: Record<string, unknown> },
+  reply_id: string,
+): string | null {
+  if (node.node_type === "send_buttons") {
+    const cfg = node.config as unknown as SendButtonsNodeConfig;
+    return cfg.buttons?.find((b) => b.reply_id === reply_id)?.title ?? null;
+  }
+  if (node.node_type === "send_list") {
+    const cfg = node.config as unknown as SendListNodeConfig;
+    for (const section of cfg.sections ?? []) {
+      const hit = section.rows?.find((r) => r.reply_id === reply_id);
+      if (hit) return hit.title;
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
  * Case-insensitive contains/exact match against a list of keywords.
  * Used by the trigger evaluator. Stable enough that the v3 builder
  * UI can preview matches by passing canned strings.
@@ -976,6 +1001,24 @@ async function handleReplyForActiveRun(
       currentNode.node_type === "send_list")
   ) {
     matched = matchReplyId(currentNode, message.reply_id);
+    const varKey = (currentNode.config as { var_key?: string }).var_key;
+    if (matched && varKey) {
+      const title = matchReplyTitle(currentNode, message.reply_id);
+      if (title) {
+        const newVars = { ...run.vars, [varKey]: title };
+        const { error: capErr } = await db
+          .from("flow_runs")
+          .update({ vars: newVars })
+          .eq("id", run.id);
+        if (!capErr) {
+          run.vars = newVars;
+          await logEvent(db, run.id, "node_entered", currentNode.node_key, {
+            captured_key: varKey,
+            captured_length: title.length,
+          });
+        }
+      }
+    }
   } else if (
     message.kind === "text" &&
     currentNode.node_type === "collect_input"

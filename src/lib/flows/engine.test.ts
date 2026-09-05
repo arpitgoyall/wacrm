@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   matchReplyId,
+  matchReplyTitle,
   matchesKeywordTrigger,
   isAutoAdvancing,
   isSuspending,
@@ -94,6 +95,47 @@ describe("matchReplyId", () => {
         "x",
       ),
     ).toBeNull();
+  });
+});
+
+describe("matchReplyTitle", () => {
+  it("returns null for nodes without options", () => {
+    expect(
+      matchReplyTitle({ node_type: "start", config: {} }, "y"),
+    ).toBeNull();
+  });
+
+  it("returns the tapped button's visible title", () => {
+    const node = {
+      node_type: "send_buttons",
+      config: {
+        text: "Pick one",
+        buttons: [
+          { reply_id: "yes", title: "Yes please", next_node_key: "confirmed" },
+          { reply_id: "no", title: "No thanks", next_node_key: "declined" },
+        ],
+      },
+    };
+    expect(matchReplyTitle(node, "yes")).toBe("Yes please");
+    expect(matchReplyTitle(node, "no")).toBe("No thanks");
+    expect(matchReplyTitle(node, "other")).toBeNull();
+  });
+
+  it("returns the tapped row's title across sections in a send_list node", () => {
+    const node = {
+      node_type: "send_list",
+      config: {
+        text: "Pick an order",
+        button_label: "View",
+        sections: [
+          { title: "Recent", rows: [{ reply_id: "o1", title: "Order 1", next_node_key: "ord_1" }] },
+          { title: "Older", rows: [{ reply_id: "o2", title: "Order 2", next_node_key: "ord_2" }] },
+        ],
+      },
+    };
+    expect(matchReplyTitle(node, "o1")).toBe("Order 1");
+    expect(matchReplyTitle(node, "o2")).toBe("Order 2");
+    expect(matchReplyTitle(node, "o99")).toBeNull();
   });
 });
 
