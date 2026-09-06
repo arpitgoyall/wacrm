@@ -58,6 +58,20 @@ export function isAccountRole(value: unknown): value is AccountRole {
   );
 }
 
+/**
+ * Tags an `agent`-role member as 'sales' or 'support'. Only meaningful
+ * for the agent role — owners/admins/viewers ignore it. Mirrors the
+ * `team_type_enum` Postgres type from migration 048.
+ */
+export type TeamType = "sales" | "support";
+
+export const TEAM_TYPES: readonly TeamType[] = ["sales", "support"] as const;
+
+/** Type-narrow an unknown string into a valid `TeamType`. */
+export function isTeamType(value: unknown): value is TeamType {
+  return typeof value === "string" && (TEAM_TYPES as readonly string[]).includes(value);
+}
+
 // ============================================================
 // Capability predicates
 //

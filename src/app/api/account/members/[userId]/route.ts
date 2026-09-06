@@ -18,7 +18,7 @@ import { NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 import { requireRole, toErrorResponse } from "@/lib/auth/account";
-import { isAccountRole } from "@/lib/auth/roles";
+import { isAccountRole, isTeamType } from "@/lib/auth/roles";
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -58,8 +58,31 @@ export async function PATCH(
     const { userId } = await params;
 
     const body = (await request.json().catch(() => null)) as
-      | { role?: unknown }
+      | { role?: unknown; team_type?: unknown }
       | null;
+
+    // Two independent, mutually exclusive edits share this route: a role
+    // change (existing) or a team-type tag (migration 048). Distinguish
+    // by which key is present rather than by truthiness, since clearing
+    // team_type is a legitimate `team_type: null` request.
+    if (body && "team_type" in body) {
+      const teamType = body.team_type;
+      if (teamType !== null && !isTeamType(teamType)) {
+        return NextResponse.json(
+          { error: "'team_type' must be 'sales', 'support', or null" },
+          { status: 400 },
+        );
+      }
+
+      const { error } = await ctx.supabase.rpc("set_member_team_type", {
+        p_user_id: userId,
+        p_team_type: teamType,
+      });
+
+      if (error) return rpcErrorToResponse(error);
+      return NextResponse.json({ ok: true });
+    }
+
     const role = body?.role;
 
     if (!isAccountRole(role)) {

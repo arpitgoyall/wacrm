@@ -1,4 +1,4 @@
-import type { AccountRole } from "@/lib/auth/roles";
+import type { AccountRole, TeamType } from "@/lib/auth/roles";
 import type { InteractiveMessagePayload } from "@/lib/whatsapp/interactive";
 
 export type {
@@ -45,6 +45,13 @@ export interface Profile {
    * `@/lib/auth/roles` rather than comparing this string directly.
    */
   account_role?: AccountRole;
+  /**
+   * Sales/support tag — only meaningful when `account_role === 'agent'`.
+   * Null for untagged agents and for every non-agent role. Drives the
+   * inbox's status-vs-pipeline and assign-visibility branching (see
+   * `useAuth().isSalesAgent`).
+   */
+  team_type?: TeamType | null;
   created_at: string;
 }
 
@@ -60,6 +67,8 @@ export interface Account {
   created_at: string;
   updated_at: string;
   contact_table_columns?: string[];
+  /** Pipeline sales-tagged agents see in the inbox (migration 048). */
+  sales_pipeline_id?: string | null;
 }
 
 /**
@@ -75,6 +84,8 @@ export interface AccountMember {
   email: string | null;
   avatar_url: string | null;
   role: AccountRole;
+  /** Sales/support tag — only ever set when `role === 'agent'`. */
+  team_type: TeamType | null;
   joined_at: string;
 }
 

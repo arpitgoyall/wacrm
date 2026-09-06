@@ -176,7 +176,14 @@
       "selectConversationHint": "왼쪽에서 대화를 선택해 메시지를 시작하세요",
       "today": "오늘",
       "yesterday": "어제",
-      "callContact": "연락처에 전화"
+      "callContact": "연락처에 전화",
+      "dealStageLoading": "불러오는 중…",
+      "createDeal": "딜 만들기",
+      "creatingDeal": "만드는 중…",
+      "dealCreateError": "딜을 만들지 못했습니다",
+      "dealStageUpdateError": "단계를 업데이트하지 못했습니다",
+      "dealStageUnknown": "알 수 없는 단계",
+      "dealNoStagesHint": "이 파이프라인에는 아직 단계가 없습니다"
     },
     "sessionTimer": {
       "expired": "만료됨",
@@ -1295,6 +1302,12 @@
       "remove": "제거",
       "removedToast": "{name}을(를) 제거했습니다",
       "updatedToast": "{name}을(를) {role}(으)로 변경했습니다",
+      "teamTypeLabel": "팀",
+      "teamTypeNone": "—",
+      "teamTypeSales": "영업",
+      "teamTypeSupport": "고객지원",
+      "teamTypeUpdatedToast": "{name}의 팀을 변경했습니다",
+      "teamTypeUpdateError": "팀 변경에 실패했습니다",
       "pendingInvitations": "대기 중인 초대",
       "inviteHint": "보안을 위해 초대 URL 원문은 생성 시 한 번만 표시됩니다 — 다시 공유하려면 아래에서 초대를 취소하고 새로 만드세요.",
       "noPendingTitle": "대기 중인 초대가 없습니다.",
@@ -1694,7 +1707,14 @@
       "save": "저장",
       "saving": "저장 중...",
       "saveFailed": "기본 통화를 저장하지 못했습니다",
-      "saveSuccess": "기본 통화가 업데이트되었습니다"
+      "saveSuccess": "기본 통화가 업데이트되었습니다",
+      "salesPipelineTitle": "영업 파이프라인",
+      "salesPipelineDesc": "\"영업\"으로 태그된 에이전트(설정 → 팀원)는 받은편지함에서 대화 상태(열림/보류/종료) 대신 이 파이프라인의 단계를 보게 되며, \"담당자 지정\"은 표시되지 않습니다.",
+      "salesPipelineLabel": "파이프라인",
+      "salesPipelineNone": "없음 — 영업 에이전트도 대화 상태를 봅니다",
+      "salesPipelineNoPipelines": "먼저 파이프라인 페이지에서 파이프라인을 만들어야 여기서 선택할 수 있습니다.",
+      "salesPipelineSaveFailed": "영업 파이프라인을 저장하지 못했습니다",
+      "salesPipelineSaveSuccess": "영업 파이프라인이 업데이트되었습니다"
     },
     "aiConfig": {
       "title": "에이전트 설정",

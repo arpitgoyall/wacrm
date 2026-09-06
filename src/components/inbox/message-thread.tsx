@@ -52,6 +52,7 @@ import {
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
+import { SalesPipelineControl } from "./sales-pipeline-control";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
 import { toast } from "sonner";
@@ -169,7 +170,7 @@ export function MessageThread({
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
 
-  const { user } = useAuth();
+  const { user, accountId, account, isSalesAgent, defaultCurrency } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -995,32 +996,49 @@ export function MessageThread({
             </button>
           )}
 
-          {/* Status dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger className={cn(
-                  "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
-                  currentStatus?.color ?? "text-muted-foreground"
-                )}>
-                {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="end"
-              className="border-border bg-popover"
-            >
-              {STATUS_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => handleStatusChange(opt.value)}
-                  className={cn("text-sm", opt.color)}
-                >
-                  {t(`status${opt.label}`)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {/* Status dropdown — sales-tagged agents see the sales
+              pipeline's stage instead; conversation status has no
+              bearing on their workflow. Falls back to the normal
+              status control if no sales pipeline is configured yet. */}
+          {isSalesAgent && account?.sales_pipeline_id && accountId && user ? (
+            <SalesPipelineControl
+              contactId={contact.id}
+              contactLabel={displayName}
+              accountId={accountId}
+              pipelineId={account.sales_pipeline_id}
+              userId={user.id}
+              defaultCurrency={defaultCurrency}
+            />
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger className={cn(
+                    "inline-flex items-center justify-center h-7 gap-1 px-2 text-xs rounded-md hover:bg-muted",
+                    currentStatus?.color ?? "text-muted-foreground"
+                  )}>
+                  {currentStatus ? t(`status${currentStatus.label}`) : t("status")}
+                  <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="border-border bg-popover"
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <DropdownMenuItem
+                    key={opt.value}
+                    onClick={() => handleStatusChange(opt.value)}
+                    className={cn("text-sm", opt.color)}
+                  >
+                    {t(`status${opt.label}`)}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
-          {/* Assign dropdown */}
+          {/* Assign dropdown — no use for sales agents (see the note
+              on the pipeline control above), so it's hidden entirely
+              rather than shown disabled. */}
+          {!isSalesAgent && (
           <DropdownMenu>
             <DropdownMenuTrigger
               className={cn(
@@ -1084,6 +1102,7 @@ export function MessageThread({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+          )}
         </div>
       </div>
 

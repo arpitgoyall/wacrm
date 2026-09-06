@@ -18,7 +18,9 @@ import {
   canManageMembers as canManageMembersFor,
   canSendMessages as canSendMessagesFor,
   isAccountRole,
+  isTeamType,
   type AccountRole,
+  type TeamType,
 } from "@/lib/auth/roles";
 
 interface Profile {
@@ -35,6 +37,9 @@ interface Profile {
   beta_features: string[];
   account_id: string | null;
   account_role: AccountRole | null;
+  /** Sales/support tag (migration 048) — only set when account_role
+   *  is 'agent'. Null for untagged agents and every other role. */
+  team_type: TeamType | null;
 }
 
 interface AccountSummary {
@@ -43,6 +48,8 @@ interface AccountSummary {
   /** Default deal currency (ISO-4217). NOT NULL DEFAULT 'USD' in the
    *  DB (migration 021); narrowed to DEFAULT_CURRENCY when absent. */
   default_currency: string;
+  /** Pipeline sales-tagged agents see in the inbox (migration 048). */
+  sales_pipeline_id: string | null;
 }
 
 /**
@@ -124,6 +131,12 @@ interface AuthContextValue {
   isAgent: boolean;
   /** True if `accountRole === 'viewer'`. */
   isViewer: boolean;
+  /** Sales/support tag (null for untagged agents and every other role). */
+  teamType: TeamType | null;
+  /** True iff this member is an agent tagged 'sales' — gates the inbox's
+   *  pipeline-vs-status control and hides "assign to" (owners/admins/
+   *  viewers always see the normal controls regardless of this tag). */
+  isSalesAgent: boolean;
   /** True if the caller can manage members (admin+). */
   canManageMembers: boolean;
   /** True if the caller can edit account-wide settings (admin+). */
@@ -152,6 +165,7 @@ interface ProfileRow {
   beta_features: string[] | null;
   account_id: string | null;
   account_role: string | null;
+  team_type: string | null;
 }
 
 /**
@@ -192,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await supabase
           .from("profiles")
           .select(
-            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role",
+            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role, team_type",
           )
           .eq("user_id", userId)
           .maybeSingle();
@@ -239,7 +253,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .from("accounts")
             // default_currency added in migration 021; narrowed to the
             // USD fallback below for older schemas where it reads null.
-            .select("id, name, default_currency")
+            .select("id, name, default_currency, sales_pipeline_id")
             .eq("id", data.account_id)
             .maybeSingle();
           if (accountErr) {
@@ -254,6 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               id: account.id,
               name: account.name,
               default_currency: account.default_currency ?? DEFAULT_CURRENCY,
+              sales_pipeline_id: account.sales_pipeline_id ?? null,
             };
           }
         }
@@ -280,6 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           beta_features: data.beta_features ?? [],
           account_id: data.account_id ?? null,
           account_role: accountRole,
+          team_type: isTeamType(data.team_type) ? data.team_type : null,
         });
         setAccount(accountRow);
         if (!data.account_id || !accountRole) {
@@ -400,6 +416,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // dependencies downstream.
   const derived = useMemo(() => {
     const role = profile?.account_role ?? null;
+    const teamType = profile?.team_type ?? null;
     return {
       accountRole: role,
       accountId: profile?.account_id ?? null,
@@ -410,8 +427,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canManageMembers: role ? canManageMembersFor(role) : false,
       canEditSettings: role ? canEditSettingsFor(role) : false,
       canSendMessages: role ? canSendMessagesFor(role) : false,
+      teamType,
+      isSalesAgent: role === "agent" && teamType === "sales",
     };
-  }, [profile?.account_role, profile?.account_id]);
+  }, [profile?.account_role, profile?.account_id, profile?.team_type]);
 
   // Signed out is not a broken account — the shell redirects to /login
   // before anything reads this.
@@ -481,6 +500,8 @@ export function useAuth(): AuthContextValue {
       canManageMembers: false,
       canEditSettings: false,
       canSendMessages: false,
+      teamType: null,
+      isSalesAgent: false,
     };
   }
   return ctx;

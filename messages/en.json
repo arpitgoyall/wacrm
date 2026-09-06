@@ -176,7 +176,14 @@
       "selectConversationHint": "Choose a conversation from the left to start messaging",
       "today": "Today",
       "yesterday": "Yesterday",
-      "callContact": "Call contact"
+      "callContact": "Call contact",
+      "dealStageLoading": "Loading…",
+      "createDeal": "Create deal",
+      "creatingDeal": "Creating…",
+      "dealCreateError": "Couldn't create deal",
+      "dealStageUpdateError": "Couldn't update stage",
+      "dealStageUnknown": "Unknown stage",
+      "dealNoStagesHint": "This pipeline has no stages yet"
     },
     "sessionTimer": {
       "expired": "Expired",
@@ -1295,6 +1302,12 @@
       "remove": "Remove",
       "removedToast": "Removed {name}",
       "updatedToast": "Updated {name} to {role}",
+      "teamTypeLabel": "Team",
+      "teamTypeNone": "—",
+      "teamTypeSales": "Sales",
+      "teamTypeSupport": "Support",
+      "teamTypeUpdatedToast": "Updated {name}'s team",
+      "teamTypeUpdateError": "Failed to update team",
       "pendingInvitations": "Pending invitations",
       "inviteHint": "The plaintext invite URL is only shown once at creation for security — to re-share, revoke the invite below and create a new one.",
       "noPendingTitle": "No pending invitations.",
@@ -1694,7 +1707,14 @@
       "save": "Save",
       "saving": "Saving...",
       "saveFailed": "Failed to save default currency",
-      "saveSuccess": "Default currency updated"
+      "saveSuccess": "Default currency updated",
+      "salesPipelineTitle": "Sales pipeline",
+      "salesPipelineDesc": "Agents tagged \"Sales\" (Settings → Team members) see this pipeline's stages in the inbox instead of conversation status (Open/Pending/Closed), and never see \"assign to\".",
+      "salesPipelineLabel": "Pipeline",
+      "salesPipelineNone": "None — sales agents see conversation status",
+      "salesPipelineNoPipelines": "Create a pipeline first (Pipelines page) to choose one here.",
+      "salesPipelineSaveFailed": "Failed to save sales pipeline",
+      "salesPipelineSaveSuccess": "Sales pipeline updated"
     },
     "aiConfig": {
       "title": "Agent setup",

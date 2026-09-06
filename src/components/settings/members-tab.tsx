@@ -66,7 +66,7 @@ import { useTranslations } from 'next-intl';
 import { RequireRole } from '@/components/auth/require-role';
 import { useAuth } from '@/hooks/use-auth';
 import { usePresence } from '@/hooks/use-presence';
-import type { AccountRole } from '@/lib/auth/roles';
+import type { AccountRole, TeamType } from '@/lib/auth/roles';
 import { presenceLabel, summarize } from '@/lib/presence';
 import {
   PRESENCE_DOT_CLASS,
@@ -82,8 +82,13 @@ interface Member {
   email: string | null;
   avatar_url: string | null;
   role: AccountRole;
+  team_type: TeamType | null;
   joined_at: string;
 }
+
+// Select can't carry a `null` option value, so the "unset" choice uses
+// this sentinel and gets mapped back to `null` before the PATCH call.
+const TEAM_TYPE_UNSET = "__unset__";
 
 interface Invitation {
   id: string;
@@ -222,6 +227,45 @@ export function MembersTab() {
         ),
       );
       console.error('[MembersTab] role change error:', err);
+      toast.error('Could not reach the server');
+    } finally {
+      setPendingMemberAction(null);
+    }
+  }
+
+  async function handleTeamTypeChange(member: Member, nextTeamType: TeamType | null) {
+    if (member.team_type === nextTeamType) return;
+    const previousTeamType = member.team_type;
+    setPendingMemberAction(member.user_id);
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.user_id === member.user_id ? { ...m, team_type: nextTeamType } : m,
+      ),
+    );
+    try {
+      const res = await fetch(`/api/account/members/${member.user_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_type: nextTeamType }),
+      });
+      if (!res.ok) {
+        setMembers((prev) =>
+          prev.map((m) =>
+            m.user_id === member.user_id ? { ...m, team_type: previousTeamType } : m,
+          ),
+        );
+        const payload = await res.json().catch(() => ({}));
+        toast.error(payload.error || t('teamTypeUpdateError'));
+        return;
+      }
+      toast.success(t('teamTypeUpdatedToast', { name: member.full_name || t('unnamed') }));
+    } catch (err) {
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.user_id === member.user_id ? { ...m, team_type: previousTeamType } : m,
+        ),
+      );
+      console.error('[MembersTab] team type change error:', err);
       toast.error('Could not reach the server');
     } finally {
       setPendingMemberAction(null);
@@ -445,6 +489,42 @@ export function MembersTab() {
                         <RoleIcon className="size-3.5" />
                         {tRoles(member.role)}
                       </span>
+                    )}
+
+                    {/* Team (sales/support) — only means anything for
+                        agents, so it's hidden entirely for every other
+                        role rather than shown disabled. Drives the inbox's
+                        pipeline-vs-status and assign-visibility branching. */}
+                    {member.role === 'agent' && (
+                      canManageMembers ? (
+                        <Select
+                          value={member.team_type ?? TEAM_TYPE_UNSET}
+                          onValueChange={(v) =>
+                            handleTeamTypeChange(
+                              member,
+                              v && v !== TEAM_TYPE_UNSET ? (v as TeamType) : null,
+                            )
+                          }
+                        >
+                          <SelectTrigger
+                            className="w-28 bg-muted border-border text-foreground"
+                            disabled={isBusy}
+                          >
+                            <SelectValue>
+                              {member.team_type ? t(`teamType${member.team_type === 'sales' ? 'Sales' : 'Support'}`) : t('teamTypeNone')}
+                            </SelectValue>
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={TEAM_TYPE_UNSET}>{t('teamTypeNone')}</SelectItem>
+                            <SelectItem value="sales">{t('teamTypeSales')}</SelectItem>
+                            <SelectItem value="support">{t('teamTypeSupport')}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : member.team_type ? (
+                        <span className="inline-flex items-center rounded-md border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                          {t(`teamType${member.team_type === 'sales' ? 'Sales' : 'Support'}`)}
+                        </span>
+                      ) : null
                     )}
 
                     {/* Remove. Admin+ only; never on the owner row;

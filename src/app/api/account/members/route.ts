@@ -15,7 +15,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentAccount, toErrorResponse } from "@/lib/auth/account";
-import { canManageMembers, isAccountRole } from "@/lib/auth/roles";
+import { canManageMembers, isAccountRole, isTeamType } from "@/lib/auth/roles";
 import type { AccountMember } from "@/types";
 
 interface ProfileRow {
@@ -24,6 +24,7 @@ interface ProfileRow {
   email: string | null;
   avatar_url: string | null;
   account_role: string;
+  team_type: string | null;
   created_at: string;
 }
 
@@ -35,7 +36,7 @@ export async function GET() {
     // the caller's, so this query is naturally account-scoped.
     const { data, error } = await ctx.supabase
       .from("profiles")
-      .select("user_id, full_name, email, avatar_url, account_role, created_at")
+      .select("user_id, full_name, email, avatar_url, account_role, team_type, created_at")
       .eq("account_id", ctx.accountId)
       .order("created_at", { ascending: true });
 
@@ -61,6 +62,12 @@ export async function GET() {
           email: canSeeEmails ? row.email : null,
           avatar_url: row.avatar_url,
           role: row.account_role,
+          // Team type only means anything for agents — don't surface a
+          // stale tag left over from before a promotion/demotion.
+          team_type:
+            row.account_role === "agent" && isTeamType(row.team_type)
+              ? row.team_type
+              : null,
           joined_at: row.created_at,
         },
       ];
