@@ -272,16 +272,12 @@ export function WhatsAppConfig() {
         payload.ctwa_capi_token = ctwaCapiToken.trim();
       }
 
+      // Only send the access token when the user actually re-entered it.
+      // Otherwise the server reuses the stored (encrypted) one — editing
+      // the verify token, PIN, CTWA credentials or media mirror no longer
+      // forces re-pasting a permanent token.
       if (tokenEdited && accessToken !== MASKED_TOKEN && accessToken.trim()) {
         payload.access_token = accessToken.trim();
-      } else if (config) {
-        // Existing config — reuse stored encrypted token by decrypting on the
-        // server. But our POST handler requires an access_token to verify
-        // with Meta. If the user didn't change the token, we need to signal
-        // that. Simplest: require token re-entry if they're updating.
-        toast.error('Please re-enter the Access Token to save changes');
-        setSaving(false);
-        return;
       }
 
       const res = await fetch('/api/whatsapp/config', {
