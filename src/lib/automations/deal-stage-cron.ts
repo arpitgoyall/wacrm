@@ -1,44 +1,26 @@
-import { timingSafeEqual } from 'node:crypto'
-import { NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { supabaseAdmin } from './admin-client'
+import { runAutomationsForTrigger } from './engine'
 
 /**
  * Drain the `deal_stage_events` outbox (migration 050) and fire the
- * `deal_stage_changed` automation trigger for each.
+ * `deal_stage_changed` automation trigger for each row.
  *
  * Rows are written by the AFTER UPDATE trigger on `deals` whenever a
  * deal's `stage_id` changes — so every stage move (pipeline board drag,
  * inbox stage control, deal form) is covered without those client-side
  * writes needing to know about automations.
  *
- * Auth: shares `AUTOMATION_CRON_SECRET` with the other cron endpoints,
- * on its own URL so one failing doesn't block the others. Hit on a
- * schedule (Vercel Cron / external pinger); a 1-minute interval keeps
- * "counsellor closed the deal → Meta gets the conversion" near-instant,
- * but anything up to a few minutes is fine.
+ * Called from `GET /api/automations/cron` (same schedule as the Wait-step
+ * drainer) so operators have one fewer endpoint to schedule. The claim
+ * (`processed_at` set with an `IS NULL` precondition) is the lock against
+ * overlapping invocations. A row whose dispatch throws is still marked
+ * processed — automation steps are best-effort, and the CAPI step's own
+ * idempotency guard (`ctwa_conversion_dispatches`) handles genuine
+ * retries via a repeated stage move.
  *
- * The claim (`processed_at` set with a `IS NULL` precondition) is the
- * lock against overlapping invocations. A row whose dispatch throws is
- * still marked processed — automation steps are best-effort and the
- * CAPI step's own idempotency guard (`ctwa_conversion_dispatches`)
- * handles genuine retries via a repeated stage move.
+ * Returns the number of events processed this pass.
  */
-export async function GET(request: Request) {
-  const expected = process.env.AUTOMATION_CRON_SECRET
-  if (!expected) {
-    return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
-  }
-  const supplied = request.headers.get('x-cron-secret') ?? ''
-  const suppliedBuf = Buffer.from(supplied)
-  const expectedBuf = Buffer.from(expected)
-  if (
-    suppliedBuf.length !== expectedBuf.length ||
-    !timingSafeEqual(suppliedBuf, expectedBuf)
-  ) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
+export async function drainDealStageEvents(): Promise<number> {
   const admin = supabaseAdmin()
 
   const { data: events, error } = await admin
@@ -52,9 +34,9 @@ export async function GET(request: Request) {
 
   if (error) {
     console.error('[deal-stage-cron] scan failed:', error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return 0
   }
-  if (!events || events.length === 0) return NextResponse.json({ processed: 0 })
+  if (!events || events.length === 0) return 0
 
   type Row = {
     id: string
@@ -96,8 +78,7 @@ export async function GET(request: Request) {
           deal_pipeline_id: ev.pipeline_id ?? undefined,
           deal_from_stage_id: ev.from_stage_id ?? undefined,
           deal_to_stage_id: ev.to_stage_id,
-          deal_value:
-            deal?.value == null ? undefined : Number(deal.value),
+          deal_value: deal?.value == null ? undefined : Number(deal.value),
           deal_currency: (deal?.currency as string | null) ?? undefined,
           deal_title: (deal?.title as string | null) ?? undefined,
         },
@@ -114,5 +95,5 @@ export async function GET(request: Request) {
     processed += 1
   }
 
-  return NextResponse.json({ processed })
+  return processed
 }

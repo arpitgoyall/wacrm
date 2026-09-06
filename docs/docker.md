@@ -67,8 +67,16 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   unviewable once Meta drops them. Files over 16 MB (the bucket's
   limit) are never copied.
 - Nothing inside the container is scheduled. If you use automation
-  Wait steps or flows, point an external scheduler at
-  `GET /api/automations/cron` and `GET /api/flows/cron` on this
-  deployment, sending the shared secret in the `x-cron-secret` header
-  (`AUTOMATION_CRON_SECRET`, see `.env.local.example`). Both return
-  503 until that variable is set.
+  Wait steps, `deal_stage_changed` automations, or flows, point an
+  external scheduler at `GET /api/automations/cron` (Wait steps +
+  deal-stage-change triggers) and `GET /api/flows/cron` (stale-run
+  sweep) on this deployment, sending the shared secret in the
+  `x-cron-secret` header (`AUTOMATION_CRON_SECRET`, see
+  `.env.local.example`). Both return 503 until that variable is set.
+  Run `/api/automations/cron` every minute or two; `/api/flows/cron`
+  every 10-15 minutes is plenty.
+- On **Vercel**, use `vercel.json` `crons` instead (already checked in)
+  and set `CRON_SECRET` in the project env — Vercel sends it as
+  `Authorization: Bearer` automatically. Vercel Hobby allows only 2
+  cron jobs and roughly daily cadence, which is too slow for Wait
+  steps; Pro is needed for minute-level runs.

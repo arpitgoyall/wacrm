@@ -1,33 +1,39 @@
-import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
+import { drainDealStageEvents } from '@/lib/automations/deal-stage-cron'
+import { checkCronAuth } from '@/lib/cron-auth'
+
+// The pending-executions + deal-stage loops can each make up to 50
+// iterations, some with an outbound Meta call — give the function room
+// past the default so a busy minute doesn't get cut off mid-batch.
+export const maxDuration = 60
 
 /**
- * Drain due `automation_pending_executions` rows. Meant to be hit
- * on a schedule (Vercel Cron / external pinger) — requires a shared
- * secret via the `x-cron-secret` header to match
- * `AUTOMATION_CRON_SECRET`.
+ * Two jobs, one schedule:
  *
- * The claim step (status = 'running') serves as a simple lock so
- * overlapping invocations don't double-process rows. Best-effort
- * only; expensive SELECT ... FOR UPDATE is avoided in favor of a
- * two-step UPDATE-by-id.
+ *   1. Drain due `automation_pending_executions` rows (Wait steps whose
+ *      timer has elapsed).
+ *   2. Drain the `deal_stage_events` outbox (migration 050) → fire the
+ *      `deal_stage_changed` trigger. Folded in here rather than a
+ *      separate endpoint so there's one fewer cron for operators to
+ *      schedule (Vercel Hobby allows only 2 cron jobs total).
+ *
+ * Auth: `Authorization: Bearer $CRON_SECRET` (Vercel Cron) OR
+ * `x-cron-secret: $AUTOMATION_CRON_SECRET` (external pinger). See
+ * `checkCronAuth`. Returns 503 until at least one secret is set.
+ *
+ * The claim step (status = 'running' / `processed_at` set) is the lock
+ * so overlapping invocations don't double-process.
  */
 export async function GET(request: Request) {
-  const expected = process.env.AUTOMATION_CRON_SECRET
-  if (!expected) {
-    return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
-  }
-  const supplied = request.headers.get('x-cron-secret') ?? ''
-  const suppliedBuf = Buffer.from(supplied)
-  const expectedBuf = Buffer.from(expected)
-  if (
-    suppliedBuf.length !== expectedBuf.length ||
-    !timingSafeEqual(suppliedBuf, expectedBuf)
-  ) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = checkCronAuth(request)
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.status === 503 ? 'cron not configured' : 'Unauthorized' },
+      { status: auth.status },
+    )
   }
 
   const admin = supabaseAdmin()
@@ -40,10 +46,9 @@ export async function GET(request: Request) {
     .limit(50)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!due || due.length === 0) return NextResponse.json({ processed: 0 })
 
   let processed = 0
-  for (const row of due) {
+  for (const row of due ?? []) {
     const { data: claim } = await admin
       .from('automation_pending_executions')
       .update({ status: 'running' })
@@ -70,5 +75,8 @@ export async function GET(request: Request) {
     processed++
   }
 
-  return NextResponse.json({ processed })
+  // Deal-stage-change outbox → `deal_stage_changed` automations.
+  const dealStageProcessed = await drainDealStageEvents()
+
+  return NextResponse.json({ processed, dealStageProcessed })
 }
