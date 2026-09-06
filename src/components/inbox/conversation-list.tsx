@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -54,6 +55,8 @@ export function ConversationList({
   resyncToken = 0,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
+  const { isOwner, isAdmin } = useAuth();
+  const canViewAssignment = isOwner || isAdmin;
   
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
     { label: t("filterAll"), value: "all" },
@@ -442,6 +445,7 @@ export function ConversationList({
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
                 assigneeName={conv.assigned_agent_id ? agentNames[conv.assigned_agent_id] : undefined}
+                showAssignee={canViewAssignment}
                 t={t}
               />
             ))}
@@ -457,6 +461,7 @@ interface ConversationItemProps {
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
   assigneeName?: string;
+  showAssignee: boolean;
   t: ReturnType<typeof useTranslations>;
 }
 
@@ -465,6 +470,7 @@ function ConversationItem({
   isActive,
   onSelect,
   assigneeName,
+  showAssignee,
   t,
 }: ConversationItemProps) {
   const contact = conversation.contact;
@@ -529,7 +535,7 @@ function ConversationItem({
             />
           </div>
         </div>
-        {assigneeName && (
+        {showAssignee && assigneeName && (
           <p className="mt-1 truncate text-[10px] text-muted-foreground">
             {t("assignedTo", { name: assigneeName })}
           </p>

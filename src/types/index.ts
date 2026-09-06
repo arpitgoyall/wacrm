@@ -59,6 +59,7 @@ export interface Account {
   owner_user_id: string;
   created_at: string;
   updated_at: string;
+  contact_table_columns?: string[];
 }
 
 /**

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag } from '@/types';
+import type { Contact, Tag, ContactTag, CustomField } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -40,6 +40,7 @@ import {
   Plus,
   Upload,
   MoreHorizontal,
+  PhoneCall,
   Pencil,
   Trash2,
   Loader2,
@@ -55,6 +56,7 @@ import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
+import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
 
@@ -64,9 +66,24 @@ interface ContactWithTags extends Contact {
   tags?: Tag[];
 }
 
+type StandardContactColumnId = 'name' | 'phone' | 'email' | 'company' | 'tags' | 'created_at';
+type ContactColumnId = StandardContactColumnId | `custom:${string}`;
+
+const CONTACT_COLUMNS: { id: StandardContactColumnId; labelKey: string }[] = [
+  { id: 'name', labelKey: 'name' },
+  { id: 'phone', labelKey: 'phone' },
+  { id: 'email', labelKey: 'email' },
+  { id: 'company', labelKey: 'company' },
+  { id: 'tags', labelKey: 'tags' },
+  { id: 'created_at', labelKey: 'createdAt' },
+];
+
+const DEFAULT_CONTACT_COLUMNS: ContactColumnId[] = CONTACT_COLUMNS.map((column) => column.id);
+
 export default function ContactsPage() {
   const t = useTranslations('Contacts.page');
   const supabase = createClient();
+  const { accountId } = useAuth();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
 
@@ -86,6 +103,12 @@ export default function ContactsPage() {
   const [detailContactId, setDetailContactId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [customFieldsOpen, setCustomFieldsOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState<ContactColumnId[]>(DEFAULT_CONTACT_COLUMNS);
+  const [columnsLoading, setColumnsLoading] = useState(true);
+  const [columnsSaving, setColumnsSaving] = useState(false);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
+  const [customValuesByContact, setCustomValuesByContact] = useState<Record<string, Record<string, string>>>({});
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -117,6 +140,140 @@ export default function ContactsPage() {
       });
     }
   }, [supabase]);
+
+  useEffect(() => {
+    if (!accountId) return;
+    let active = true;
+    supabase
+      .from('accounts')
+      .select('contact_table_columns')
+      .eq('id', accountId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          toast.error(t('toastFailedLoadColumns'));
+        } else {
+          const configured = data?.contact_table_columns;
+          const valid = Array.isArray(configured)
+            ? configured.filter((column): column is ContactColumnId =>
+                CONTACT_COLUMNS.some((available) => available.id === column) ||
+                /^custom:[0-9a-f-]{36}$/i.test(column),
+              )
+            : DEFAULT_CONTACT_COLUMNS;
+          setVisibleColumns(valid.length > 0 ? valid : DEFAULT_CONTACT_COLUMNS);
+        }
+        setColumnsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId, supabase, t]);
+
+  async function saveVisibleColumns(next: ContactColumnId[]) {
+    if (!accountId || next.length === 0) return;
+    setColumnsSaving(true);
+    const { error } = await supabase
+      .from('accounts')
+      .update({ contact_table_columns: next })
+      .eq('id', accountId);
+    if (error) {
+      toast.error(t('toastFailedSaveColumns'));
+      setColumnsSaving(false);
+      return;
+    }
+    setVisibleColumns(next);
+    toast.success(t('columnsSaved'));
+    setColumnsSaving(false);
+  }
+
+  function toggleColumn(column: ContactColumnId) {
+    const next = visibleColumns.includes(column)
+      ? visibleColumns.filter((current) => current !== column)
+      : [...visibleColumns, column];
+    if (next.length > 0) void saveVisibleColumns(next);
+  }
+
+  function isColumnVisible(column: ContactColumnId) {
+    return visibleColumns.includes(column);
+  }
+
+  const displayColumns: { id: ContactColumnId; labelKey?: string; label?: string }[] = [
+    ...CONTACT_COLUMNS,
+    ...customFields.map((field) => ({
+      id: `custom:${field.id}` as const,
+      label: field.field_name,
+    })),
+  ];
+  const visibleDisplayColumns = displayColumns.filter((column) => isColumnVisible(column.id));
+
+  function renderColumnCell(contact: ContactWithTags, column: { id: ContactColumnId }) {
+    if (column.id.startsWith('custom:')) {
+      const value = customValuesByContact[contact.id]?.[column.id.slice(7)];
+      return value || <span className="text-muted-foreground">-</span>;
+    }
+
+    switch (column.id) {
+      case 'name':
+        return contact.name || <span className="text-muted-foreground italic">{t('unnamed')}</span>;
+      case 'phone':
+        return (
+          <a
+            href={`tel:${contact.phone}`}
+            aria-label={t('callContact')}
+            onClick={(event) => event.stopPropagation()}
+            className="inline-flex items-center gap-1 text-primary hover:underline"
+          >
+            <PhoneCall className="size-3" />
+            {contact.phone}
+          </a>
+        );
+      case 'email':
+        return contact.email || <span className="text-muted-foreground">-</span>;
+      case 'company':
+        return contact.company || <span className="text-muted-foreground">-</span>;
+      case 'tags':
+        return (
+          <div className="flex flex-wrap gap-1">
+            {contact.tags && contact.tags.length > 0 ? (
+              contact.tags.slice(0, 3).map((tag) => (
+                <span
+                  key={tag.id}
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{ backgroundColor: tag.color + '20', color: tag.color }}
+                >
+                  {tag.name}
+                </span>
+              ))
+            ) : (
+              <span className="text-muted-foreground text-xs">-</span>
+            )}
+            {contact.tags && contact.tags.length > 3 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{contact.tags.length - 3}
+              </span>
+            )}
+          </div>
+        );
+      case 'created_at':
+        return new Date(contact.created_at).toLocaleDateString('en-US', {
+          month: 'short', day: 'numeric', year: 'numeric',
+        });
+    }
+  }
+
+  const fetchCustomFields = useCallback(async () => {
+    if (!accountId) return;
+    const { data } = await supabase
+      .from('custom_fields')
+      .select('*')
+      .order('field_name');
+    setCustomFields((data as CustomField[] | null) ?? []);
+  }, [accountId, supabase]);
+
+  useEffect(() => {
+    fetchCustomFields();
+  }, [fetchCustomFields]);
 
   const fetchContacts = useCallback(async () => {
     const seq = ++fetchSeq.current;
@@ -180,6 +337,7 @@ export default function ContactsPage() {
 
     if (contactRows.length === 0) {
       setContacts([]);
+      setCustomValuesByContact({});
       setLoading(false);
       return;
     }
@@ -191,6 +349,18 @@ export default function ContactsPage() {
       .select('contact_id, tag_id')
       .in('contact_id', contactIds);
     if (seq !== fetchSeq.current) return; // superseded by a newer fetch
+
+    const { data: customValues } = await supabase
+      .from('contact_custom_values')
+      .select('contact_id, custom_field_id, value')
+      .in('contact_id', contactIds);
+    if (seq !== fetchSeq.current) return;
+
+    const valuesByContact: Record<string, Record<string, string>> = {};
+    customValues?.forEach((value) => {
+      (valuesByContact[value.contact_id] ??= {})[value.custom_field_id] = value.value ?? '';
+    });
+    setCustomValuesByContact(valuesByContact);
 
     const tagsByContact: Record<string, string[]> = {};
     contactTags?.forEach((ct) => {
@@ -214,12 +384,10 @@ export default function ContactsPage() {
   // synchronously in the effect body, so the cascade the lint rule
   // warns about doesn't apply here.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchTags();
   }, [fetchTags]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContacts();
   }, [fetchContacts]);
 
@@ -351,14 +519,24 @@ export default function ContactsPage() {
         </div>
         <div className="flex items-center gap-2">
           {canEditSettings && (
-            <Button
-              variant="outline"
-              onClick={() => setCustomFieldsOpen(true)}
-              className="border-border text-muted-foreground hover:bg-muted"
-            >
-              <SlidersHorizontal className="size-4" />
-              {t('customFieldsBtn')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setColumnsOpen(true)}
+                className="border-border text-muted-foreground hover:bg-muted"
+              >
+                <SlidersHorizontal className="size-4" />
+                {t('displayColumnsBtn')}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setCustomFieldsOpen(true)}
+                className="border-border text-muted-foreground hover:bg-muted"
+              >
+                <SlidersHorizontal className="size-4" />
+                {t('customFieldsBtn')}
+              </Button>
+            </div>
           )}
           <GatedButton
             variant="outline"
@@ -541,19 +719,18 @@ export default function ContactsPage() {
                   aria-label="Select all contacts on this page"
                 />
               </TableHead>
-              <TableHead className="text-muted-foreground">{t('tableColumns.name')}</TableHead>
-              <TableHead className="text-muted-foreground">{t('tableColumns.phone')}</TableHead>
-              <TableHead className="text-muted-foreground hidden md:table-cell">{t('tableColumns.email')}</TableHead>
-              <TableHead className="text-muted-foreground hidden lg:table-cell">{t('tableColumns.company')}</TableHead>
-              <TableHead className="text-muted-foreground hidden md:table-cell">{t('tableColumns.tags')}</TableHead>
-              <TableHead className="text-muted-foreground hidden lg:table-cell">{t('tableColumns.createdAt')}</TableHead>
+              {visibleDisplayColumns.map((column) => (
+                <TableHead key={column.id} className="text-muted-foreground">
+                  {column.label ?? t(`tableColumns.${column.labelKey}`)}
+                </TableHead>
+              ))}
               <TableHead className="text-muted-foreground w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow className="border-border">
-                <TableCell colSpan={8} className="text-center py-12">
+                <TableCell colSpan={visibleDisplayColumns.length + 2} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="size-6 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">{t('loading')}</p>
@@ -562,7 +739,7 @@ export default function ContactsPage() {
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow className="border-border">
-                <TableCell colSpan={8} className="text-center py-12">
+                <TableCell colSpan={visibleDisplayColumns.length + 2} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="size-8 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
@@ -600,50 +777,14 @@ export default function ContactsPage() {
                       aria-label={`Select ${contact.name || contact.phone}`}
                     />
                   </TableCell>
-                  <TableCell className="text-foreground font-medium">
-                    {contact.name || <span className="text-muted-foreground italic">{t('unnamed')}</span>}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-xs">
-                    {contact.phone}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground hidden md:table-cell text-sm">
-                    {contact.email || <span className="text-muted-foreground">-</span>}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground hidden lg:table-cell text-sm">
-                    {contact.company || <span className="text-muted-foreground">-</span>}
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell">
-                    <div className="flex flex-wrap gap-1">
-                      {contact.tags && contact.tags.length > 0 ? (
-                        contact.tags.slice(0, 3).map((tag) => (
-                          <span
-                            key={tag.id}
-                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                            style={{
-                              backgroundColor: tag.color + '20',
-                              color: tag.color,
-                            }}
-                          >
-                            {tag.name}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-muted-foreground text-xs">-</span>
-                      )}
-                      {contact.tags && contact.tags.length > 3 && (
-                        <span className="text-[10px] text-muted-foreground">
-                          +{contact.tags.length - 3}
-                        </span>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-xs hidden lg:table-cell">
-                    {new Date(contact.created_at).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </TableCell>
+                  {visibleDisplayColumns.map((column) => (
+                    <TableCell
+                      key={column.id}
+                      className={column.id === 'name' ? 'text-foreground font-medium' : column.id === 'phone' ? 'text-muted-foreground font-mono text-xs' : column.id === 'tags' ? '' : 'text-muted-foreground text-sm'}
+                    >
+                      {renderColumnCell(contact, column)}
+                    </TableCell>
+                  ))}
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger
@@ -767,6 +908,34 @@ export default function ContactsPage() {
           onOpenChange={setCustomFieldsOpen}
         />
       )}
+
+      <Dialog open={columnsOpen} onOpenChange={setColumnsOpen}>
+        <DialogContent className="bg-popover border-border text-popover-foreground sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">{t('displayColumnsTitle')}</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              {t('displayColumnsDesc')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {displayColumns.map((column) => (
+              <label key={column.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
+                <Checkbox
+                  checked={isColumnVisible(column.id)}
+                  disabled={columnsLoading || columnsSaving || (visibleColumns.length === 1 && isColumnVisible(column.id))}
+                  onCheckedChange={() => toggleColumn(column.id)}
+                />
+                <span className="text-sm">{column.label ?? t(`tableColumns.${column.labelKey}`)}</span>
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setColumnsOpen(false)} className="border-border">
+              {t('done')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation */}
       <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

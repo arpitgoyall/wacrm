@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     follow: false,
   },
   icons: {
-    icon: [{ url: "/icon" }],
+    icon: [{ url: "/whatsapp-icon.svg", type: "image/svg+xml" }],
   },
   formatDetection: {
     email: false,
