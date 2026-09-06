@@ -175,7 +175,8 @@
       "selectConversation": "Select a conversation",
       "selectConversationHint": "Choose a conversation from the left to start messaging",
       "today": "Today",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "callContact": "Call contact"
     },
     "sessionTimer": {
       "expired": "Expired",
@@ -288,7 +289,9 @@
       "deals": "Deals",
       "noTags": "No tags",
       "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+      "addNotePlaceholder": "Add a note...",
+      "callContact": "Call contact",
+      "copyPhone": "Copy phone number"
     },
     "aiBanner": {
       "pausedTitle": "AI assistant is paused here",
@@ -309,6 +312,7 @@
       "displayColumnsBtn": "Display columns",
       "displayColumnsTitle": "Contact table columns",
       "displayColumnsDesc": "Choose the columns everyone in this account sees, including custom fields.",
+      "displayColumnsReadOnly": "Only owners and admins can change this.",
       "callContact": "Call contact",
       "done": "Done",
       "customFieldsBtn": "Custom fields",
@@ -384,7 +388,9 @@
       "dupSimilar": "A contact with a very similar number already exists.",
       "loadingTags": "Loading tags...",
       "noTagsAvailable": "No tags available. Create tags in Settings.",
-      "phoneRequired": "Phone number is required"
+      "phoneRequired": "Phone number is required",
+      "assignedAgentLabel": "Assigned agent",
+      "unassigned": "Unassigned"
     },
     "detailView": {
       "tabs": {
@@ -1157,8 +1163,10 @@
         "actionLabel": "Action",
         "addTag": "Add tag",
         "removeTag": "Remove tag",
-        "tagUuidPlaceholder": "Tag UUID",
         "noTagsAvailable": "No tags available. Create a tag in Settings first.",
+        "loadingTags": "Loading tags…",
+        "tagsLoadError": "Couldn't load tags.",
+        "retry": "Retry",
         "thenAdvanceTo": "Then advance to",
         "mediaTypeLabel": "Media type",
         "imageLabel": "Image (PNG, JPEG, WebP)",

@@ -584,6 +584,11 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .select('id')
         .eq('account_id', args.automation.account_id)
         .eq('contact_id', args.contactId)
+        // Only route open work. Without this, a contact whose most recent
+        // deal happens to already be won/lost (e.g. re-imported or
+        // backfilled data) would get that stale deal reassigned instead
+        // of an older still-open one, silently doing nothing useful.
+        .eq('status', 'open')
         .order('created_at', { ascending: false })
         .limit(1)
       if (cfg.pipeline_id) dealQuery = dealQuery.eq('pipeline_id', cfg.pipeline_id)
@@ -661,12 +666,15 @@ async function resolveAssignmentAgent(
   // two round_robin steps in the same run with different agent_ids pools
   // must resolve independently. Steps sharing a pool (including the "any
   // agent" pool when agent_ids is empty) still resolve to the same agent,
-  // which is the point of sharing the cache at all.
+  // which is the point of sharing the cache at all. Namespaced by
+  // automation id so a chained run (e.g. tag_added dispatched from
+  // add_tag, which inherits the parent's context.vars wholesale) never
+  // reuses a sibling automation's pick just because its pool looks the same.
   const poolKey =
     Array.isArray(cfg.agent_ids) && cfg.agent_ids.length > 0
       ? [...cfg.agent_ids].sort().join(',')
       : '*'
-  const cacheKey = `${SHARED_ASSIGNMENT_KEY}:${poolKey}`
+  const cacheKey = `${SHARED_ASSIGNMENT_KEY}:${args.automation.id}:${poolKey}`
 
   const cached = args.context.vars?.[cacheKey]
   if (typeof cached === 'string' && cached) return cached
@@ -683,7 +691,22 @@ async function resolveAssignmentAgent(
   const { data: profiles } = await profileQuery
   if (!profiles || profiles.length === 0) return undefined
 
-  const agentId = profiles[args.automation.execution_count % profiles.length]?.user_id
+  // Atomic per-(automation, pool) cursor (migration 047) — automation.
+  // execution_count is read once at dispatch and only incremented after
+  // all steps finish (migration 007), so two concurrent runs of the same
+  // automation would otherwise read the same stale count and land on the
+  // same agent instead of rotating.
+  const { data: index, error: idxErr } = await supabaseAdmin().rpc('next_round_robin_index', {
+    p_automation_id: args.automation.id,
+    p_pool_key: poolKey,
+    p_pool_size: profiles.length,
+  })
+  if (idxErr || typeof index !== 'number') {
+    console.error('[automations] round-robin cursor failed:', idxErr)
+    return undefined
+  }
+
+  const agentId = profiles[index % profiles.length]?.user_id
   if (!agentId) return undefined
 
   args.context.vars = {

@@ -6,7 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import type { Contact, Deal, ContactNote, Tag } from "@/types";
 import {
-  Phone,
+  PhoneCall,
   Mail,
   Copy,
   Check,
@@ -157,18 +157,28 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
 
           {/* Phone */}
           <div className="mt-4 space-y-2">
-            <button
-              onClick={handleCopyPhone}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted"
-            >
-              <Phone className="h-4 w-4 text-muted-foreground" />
-              <span className="flex-1 text-left">{contact.phone}</span>
-              {copied ? (
-                <Check className="h-3 w-3 text-primary" />
-              ) : (
-                <Copy className="h-3 w-3 text-muted-foreground" />
-              )}
-            </button>
+            <div className="flex items-center gap-1 rounded-lg text-sm text-muted-foreground">
+              <a
+                href={`tel:${contact.phone}`}
+                aria-label={tSidebar("callContact")}
+                className="flex flex-1 items-center gap-2 truncate rounded-lg px-3 py-2 transition-colors hover:bg-muted hover:text-primary"
+              >
+                <PhoneCall className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate text-left">{contact.phone}</span>
+              </a>
+              <button
+                type="button"
+                onClick={handleCopyPhone}
+                aria-label={tSidebar("copyPhone")}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted"
+              >
+                {copied ? (
+                  <Check className="h-3 w-3 text-primary" />
+                ) : (
+                  <Copy className="h-3 w-3 text-muted-foreground" />
+                )}
+              </button>
+            </div>
 
             {contact.email && (
               <div className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground">

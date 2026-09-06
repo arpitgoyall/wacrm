@@ -3,9 +3,17 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import { useCan } from '@/hooks/use-can';
 import { addContactTag, deleteContactTag } from '@/lib/contacts/tag-api';
 import { toast } from 'sonner';
-import type { Contact, Tag, ContactTag } from '@/types';
+import type { Contact, Tag, ContactTag, AccountMember } from '@/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   findExistingContact,
   isExactMatch,
@@ -49,6 +57,7 @@ export function ContactForm({
   const t = useTranslations('Contacts.form');
   const supabase = createClient();
   const { accountId } = useAuth();
+  const canReassign = useCan('manage-members');
   const isEdit = !!contact;
 
   const [name, setName] = useState('');
@@ -56,6 +65,13 @@ export function ContactForm({
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Reassigning an existing contact is admin+ only (see canReassign) — the
+  // contacts_update RLS policy doesn't restrict this column specifically,
+  // but letting any agent reassign any contact away from its owner is the
+  // same "steal on edit" problem this form used to have by accident.
+  const [assignedAgentId, setAssignedAgentId] = useState<string | null>(null);
+  const [members, setMembers] = useState<AccountMember[]>([]);
 
   // Duplicate-phone detection for NEW contacts. `exact` (same digits)
   // hard-blocks the save; a fuzzy trunk-variant match only warns. The
@@ -77,10 +93,29 @@ export function ContactForm({
       setEmail(contact?.email ?? '');
       setCompany(contact?.company ?? '');
       setSelectedTagIds(contactTags.map((ct) => ct.tag_id));
+      setAssignedAgentId(contact?.assigned_agent_id ?? null);
       setDupMatch(null);
       fetchTags();
     }
   }, [open, contact]);
+
+  useEffect(() => {
+    if (!open || !isEdit || !canReassign) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/account/members', { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = (await res.json()) as { members?: AccountMember[] };
+        if (!cancelled) setMembers(json.members ?? []);
+      } catch {
+        // Members endpoint unreachable — reassignment picker just stays empty.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isEdit, canReassign]);
 
   // Look up an existing contact with this number (new contacts only).
   // Runs on blur so we don't query on every keystroke.
@@ -158,6 +193,10 @@ export function ContactForm({
             email: email.trim() || null,
             company: company.trim() || null,
             updated_at: new Date().toISOString(),
+            // Only admins can even see/change this field (canReassign
+            // gates the picker below); everyone else's edits leave the
+            // existing assignment untouched.
+            ...(canReassign ? { assigned_agent_id: assignedAgentId } : {}),
           })
           .eq('id', contactId);
         if (error) throw error;
@@ -323,6 +362,28 @@ export function ContactForm({
               className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
             />
           </div>
+
+          {isEdit && canReassign && (
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">{t('assignedAgentLabel')}</Label>
+              <Select
+                value={assignedAgentId ?? '__unassigned__'}
+                onValueChange={(v) => setAssignedAgentId(v === '__unassigned__' ? null : v)}
+              >
+                <SelectTrigger className="bg-muted border-border text-foreground">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__unassigned__">{t('unassigned')}</SelectItem>
+                  {members.map((m) => (
+                    <SelectItem key={m.user_id} value={m.user_id}>
+                      {m.full_name || m.email || m.user_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label className="text-muted-foreground">{t('tagsLabel')}</Label>

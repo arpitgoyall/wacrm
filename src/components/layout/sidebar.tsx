@@ -87,6 +87,8 @@ interface NavItem {
    * Purely informational — doesn't affect routing or access.
    */
   beta?: boolean;
+  /** When true, hidden from anyone below the "admin" role. */
+  adminOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -95,10 +97,10 @@ const navItems: NavItem[] = [
   { href: "/notifications", labelKey: "notifications", icon: Bell },
   { href: "/contacts", labelKey: "contacts", icon: Users },
   { href: "/pipelines", labelKey: "pipelines", icon: GitBranch },
-  { href: "/broadcasts", labelKey: "broadcasts", icon: Radio },
-  { href: "/automations", labelKey: "automations", icon: Zap },
-  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true },
-  { href: "/agents", labelKey: "aiAgents", icon: Bot },
+  { href: "/broadcasts", labelKey: "broadcasts", icon: Radio, adminOnly: true },
+  { href: "/automations", labelKey: "automations", icon: Zap, adminOnly: true },
+  { href: "/flows", labelKey: "flows", icon: Workflow, beta: true, adminOnly: true },
+  { href: "/agents", labelKey: "aiAgents", icon: Bot, adminOnly: true },
 ];
 
 const bottomNavItems = [
@@ -116,7 +118,20 @@ import { useTranslations } from "next-intl";
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const t = useTranslations("Sidebar");
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { profile, profileLoading, account, accountRole, signOut, refreshProfile } = useAuth();
+
+  // accountRole only gets refetched by useAuth when the user id changes,
+  // not when an admin elsewhere changes this user's role mid-session — so
+  // the admin-only items above (and the settings gating that mirrors them)
+  // can go stale until reload. Re-pull it whenever the tab regains focus,
+  // which is when a role change made elsewhere is most likely to matter.
+  useEffect(() => {
+    const onFocus = () => {
+      refreshProfile();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshProfile]);
   const totalUnread = useTotalUnread();
   const unreadNotifications = useUnreadNotifications();
   // Only surface the account-name strip when it actually carries
@@ -211,12 +226,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="flex flex-col gap-1">
             {navItems.map((item) => {
-              const adminOnly =
-                item.href === "/broadcasts" ||
-                item.href === "/automations" ||
-                item.href === "/flows" ||
-                item.href === "/agents";
-              if (adminOnly && (!accountRole || !hasMinRole(accountRole, "admin"))) {
+              if (item.adminOnly && (!accountRole || !hasMinRole(accountRole, "admin"))) {
                 return null;
               }
 

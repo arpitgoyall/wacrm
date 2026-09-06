@@ -27,6 +27,7 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  PhoneCall,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -921,7 +922,14 @@ export function MessageThread({
           </div>
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-foreground">{displayName}</h2>
-            <p className="truncate text-xs text-muted-foreground">{contact.phone}</p>
+            <a
+              href={`tel:${contact.phone}`}
+              aria-label={t("callContact")}
+              className="inline-flex items-center gap-1 truncate text-xs text-muted-foreground hover:text-primary hover:underline"
+            >
+              <PhoneCall className="h-3 w-3 shrink-0" />
+              <span className="truncate">{contact.phone}</span>
+            </a>
           </div>
           {/* Session timer badge — hidden on the narrowest phones so
               the name + back arrow keep their room. */}

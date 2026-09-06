@@ -142,7 +142,13 @@ export default function ContactsPage() {
   }, [supabase]);
 
   useEffect(() => {
-    if (!accountId) return;
+    if (!accountId) {
+      // No account to load columns for (profile error, unlinked session) —
+      // don't leave the dialog's checkboxes disabled forever waiting for
+      // an accountId that may never arrive.
+      setColumnsLoading(false);
+      return;
+    }
     let active = true;
     supabase
       .from('accounts')
@@ -188,6 +194,10 @@ export default function ContactsPage() {
   }
 
   function toggleColumn(column: ContactColumnId) {
+    // contact_table_columns lives on `accounts`, which RLS restricts to
+    // admin+ writers — mirror that here so agents/viewers get a disabled
+    // control instead of a save that silently fails.
+    if (!canEditSettings) return;
     const next = visibleColumns.includes(column)
       ? visibleColumns.filter((current) => current !== column)
       : [...visibleColumns, column];
@@ -342,19 +352,27 @@ export default function ContactsPage() {
       return;
     }
 
-    // Fetch tags for these contacts
+    // Fetch tags (and, only if a custom column is actually shown, custom
+    // field values) for these contacts — independent queries, so run them
+    // together instead of paying two round-trips in series.
     const contactIds = contactRows.map((c) => c.id);
-    const { data: contactTags } = await supabase
-      .from('contact_tags')
-      .select('contact_id, tag_id')
-      .in('contact_id', contactIds);
+    const needsCustomValues = visibleColumns.some((id) => id.startsWith('custom:'));
+    const [{ data: contactTags }, { data: customValues }] = await Promise.all([
+      supabase
+        .from('contact_tags')
+        .select('contact_id, tag_id')
+        .in('contact_id', contactIds),
+      needsCustomValues
+        ? supabase
+            .from('contact_custom_values')
+            .select('contact_id, custom_field_id, value')
+            .in('contact_id', contactIds)
+        : Promise.resolve({
+            data: [] as { contact_id: string; custom_field_id: string; value: string | null }[],
+            error: null,
+          }),
+    ]);
     if (seq !== fetchSeq.current) return; // superseded by a newer fetch
-
-    const { data: customValues } = await supabase
-      .from('contact_custom_values')
-      .select('contact_id, custom_field_id, value')
-      .in('contact_id', contactIds);
-    if (seq !== fetchSeq.current) return;
 
     const valuesByContact: Record<string, Record<string, string>> = {};
     customValues?.forEach((value) => {
@@ -377,7 +395,7 @@ export default function ContactsPage() {
 
     setContacts(enriched);
     setLoading(false);
-  }, [supabase, page, search, selectedTagIds, tagsMap, t]);
+  }, [supabase, page, search, selectedTagIds, tagsMap, t, visibleColumns]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not
@@ -917,12 +935,20 @@ export default function ContactsPage() {
               {t('displayColumnsDesc')}
             </DialogDescription>
           </DialogHeader>
+          {!canEditSettings && (
+            <p className="text-xs text-muted-foreground">{t('displayColumnsReadOnly')}</p>
+          )}
           <div className="space-y-2">
             {displayColumns.map((column) => (
               <label key={column.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
                 <Checkbox
                   checked={isColumnVisible(column.id)}
-                  disabled={columnsLoading || columnsSaving || (visibleColumns.length === 1 && isColumnVisible(column.id))}
+                  disabled={
+                    !canEditSettings ||
+                    columnsLoading ||
+                    columnsSaving ||
+                    (visibleColumns.length === 1 && isColumnVisible(column.id))
+                  }
                   onCheckedChange={() => toggleColumn(column.id)}
                 />
                 <span className="text-sm">{column.label ?? t(`tableColumns.${column.labelKey}`)}</span>

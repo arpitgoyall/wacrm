@@ -175,7 +175,8 @@
       "selectConversation": "대화를 선택하세요",
       "selectConversationHint": "왼쪽에서 대화를 선택해 메시지를 시작하세요",
       "today": "오늘",
-      "yesterday": "어제"
+      "yesterday": "어제",
+      "callContact": "연락처에 전화"
     },
     "sessionTimer": {
       "expired": "만료됨",
@@ -288,7 +289,9 @@
       "deals": "딜",
       "noTags": "태그 없음",
       "noDeals": "딜 없음",
-      "addNotePlaceholder": "메모 추가..."
+      "addNotePlaceholder": "메모 추가...",
+      "callContact": "연락처에 전화",
+      "copyPhone": "전화번호 복사"
     },
     "aiBanner": {
       "pausedTitle": "이 대화에서 AI 어시스턴트가 일시 중지됨",
@@ -309,6 +312,7 @@
       "displayColumnsBtn": "표시 열",
       "displayColumnsTitle": "연락처 표 열",
       "displayColumnsDesc": "이 계정의 모든 사용자가 볼 열과 커스텀 필드를 선택하세요.",
+      "displayColumnsReadOnly": "소유자와 관리자만 변경할 수 있습니다.",
       "callContact": "연락처에 전화",
       "done": "완료",
       "customFieldsBtn": "커스텀 필드",
@@ -384,7 +388,9 @@
       "dupSimilar": "매우 유사한 번호를 가진 연락처가 이미 있습니다.",
       "loadingTags": "태그를 불러오는 중...",
       "noTagsAvailable": "사용 가능한 태그가 없습니다. 설정에서 태그를 만드세요.",
-      "phoneRequired": "전화번호는 필수입니다"
+      "phoneRequired": "전화번호는 필수입니다",
+      "assignedAgentLabel": "담당 에이전트",
+      "unassigned": "미배정"
     },
     "detailView": {
       "tabs": {
@@ -1157,8 +1163,10 @@
         "actionLabel": "액션",
         "addTag": "태그 추가",
         "removeTag": "태그 제거",
-        "tagUuidPlaceholder": "태그 UUID",
         "noTagsAvailable": "사용 가능한 태그가 없습니다. 먼저 설정에서 태그를 만드세요.",
+        "loadingTags": "태그 불러오는 중…",
+        "tagsLoadError": "태그를 불러오지 못했습니다.",
+        "retry": "다시 시도",
         "thenAdvanceTo": "이후 다음 진행",
         "mediaTypeLabel": "미디어 유형",
         "imageLabel": "이미지 (PNG, JPEG, WebP)",

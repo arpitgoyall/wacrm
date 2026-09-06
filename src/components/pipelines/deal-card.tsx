@@ -93,6 +93,11 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
               href={`tel:${contactPhone}`}
               aria-label={t("callContact")}
               onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                // Enter/Space here should just activate the link, not also
+                // bubble to the card's own onKeyDown and open the edit modal.
+                if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+              }}
               className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
               <PhoneCall className="h-3 w-3" />

@@ -667,7 +667,7 @@ function ConditionForm({
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const tags = useUserTags();
+  const { tags, status: tagsStatus, retry: retryTags } = useUserTags();
 
   const subject = cfg.subject ?? "var";
   const operator = cfg.operator ?? "equals";
@@ -721,6 +721,17 @@ function ConditionForm({
                 ))}
               </SelectContent>
             </Select>
+            ) : tagsStatus === "loading" ? (
+              <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                {t("loadingTags")}
+              </p>
+            ) : tagsStatus === "error" ? (
+              <div className="flex items-center justify-between gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                <span>{t("tagsLoadError")}</span>
+                <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={retryTags}>
+                  {t("retry")}
+                </Button>
+              </div>
             ) : (
               <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
                 {t("noTagsAvailable")}
@@ -834,7 +845,7 @@ function SetTagForm({
   onUpdateConfig: (patch: Record<string, unknown>) => void;
   t: ReturnType<typeof useTranslations>;
 }) {
-  const tags = useUserTags();
+  const { tags, status: tagsStatus, retry: retryTags } = useUserTags();
 
   return (
     <>
@@ -876,6 +887,17 @@ function SetTagForm({
                 ))}
               </SelectContent>
             </Select>
+          ) : tagsStatus === "loading" ? (
+            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {t("loadingTags")}
+            </p>
+          ) : tagsStatus === "error" ? (
+            <div className="flex items-center justify-between gap-2 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              <span>{t("tagsLoadError")}</span>
+              <Button type="button" size="sm" variant="ghost" className="h-6 px-2" onClick={retryTags}>
+                {t("retry")}
+              </Button>
+            </div>
           ) : (
             <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
               {t("noTagsAvailable")}
@@ -897,26 +919,42 @@ function SetTagForm({
 /**
  * Shared loader for both `condition` (subject=tag) and `set_tag`.
  * The selected tag name is displayed while its UUID is stored in config.
+ *
+ * `status` is exposed separately from `tags` so callers can tell "this
+ * account genuinely has no tags" apart from "the fetch failed" — both
+ * used to collapse into an empty array, which meant a transient 500
+ * rendered as "No tags available" and blocked editing a node that
+ * already had a valid tag_id/subject_key.
  */
-function useUserTags(): UserTag[] {
+function useUserTags(): {
+  tags: UserTag[];
+  status: "loading" | "ready" | "error";
+  retry: () => void;
+} {
   const [tags, setTags] = useState<UserTag[]>([]);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let cancelled = false;
+    setStatus("loading");
     (async () => {
       try {
-        const res = await fetch("/api/tags").catch(() => null);
-        if (!res || !res.ok) return;
+        const res = await fetch("/api/tags");
+        if (!res.ok) throw new Error(`tags fetch failed: ${res.status}`);
         const json = (await res.json()) as { tags?: UserTag[] };
-        if (!cancelled) setTags(json.tags ?? []);
+        if (!cancelled) {
+          setTags(json.tags ?? []);
+          setStatus("ready");
+        }
       } catch {
-        // Tags endpoint absent — caller falls back to raw input.
+        if (!cancelled) setStatus("error");
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
-  return tags;
+  }, [attempt]);
+  return { tags, status, retry: () => setAttempt((a) => a + 1) };
 }
 
 // ============================================================
