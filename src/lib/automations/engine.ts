@@ -18,6 +18,8 @@ import type {
   CreateDealStepConfig,
   AssignDealStepConfig,
   AssignConversationStepConfig,
+  DealStageChangedTriggerConfig,
+  SendMetaCapiEventStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
@@ -25,6 +27,8 @@ import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
 import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
+import { sendCtwaConversion } from './ctwa-capi'
+import { decrypt } from '@/lib/whatsapp/encryption'
 
 // ------------------------------------------------------------
 // Public API
@@ -43,6 +47,20 @@ export interface AutomationContext {
   agent_id?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
+  /**
+   * Deal-stage-change fields, set by the deal-stage-events cron for the
+   * `deal_stage_changed` trigger. `deal_to_stage_id` is what
+   * `triggerMatches` compares; the rest feed the `send_meta_capi_event`
+   * step and `{{ deal.* }}` interpolation.
+   */
+  deal_id?: string
+  deal_pipeline_id?: string
+  deal_from_stage_id?: string
+  deal_to_stage_id?: string
+  /** Deal columns snapshotted by the cron, for `{{ deal.* }}` + the CAPI step. */
+  deal_value?: number
+  deal_currency?: string
+  deal_title?: string
 }
 
 export interface DispatchInput {
@@ -559,6 +577,24 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .select('default_currency')
         .eq('id', args.automation.account_id)
         .maybeSingle()
+      // Snapshot the contact's CTWA attribution onto the deal so a
+      // later `send_meta_capi_event` step attributes THIS deal even if
+      // the contact clicks a different ad in between. The CAPI step
+      // still falls back to the contact's own columns for deals created
+      // outside automations.
+      let dealCtwaClid: string | null = null
+      let dealCtwaSourceId: string | null = null
+      if (args.contactId) {
+        const { data: ctwaContact } = await db
+          .from('contacts')
+          .select('ctwa_clid, ctwa_source_id')
+          .eq('id', args.contactId)
+          .eq('account_id', args.automation.account_id)
+          .maybeSingle()
+        dealCtwaClid = (ctwaContact as { ctwa_clid: string | null } | null)?.ctwa_clid ?? null
+        dealCtwaSourceId =
+          (ctwaContact as { ctwa_source_id: string | null } | null)?.ctwa_source_id ?? null
+      }
       await db.from('deals').insert({
         // Tenancy + audit, same split as automation_logs above.
         account_id: args.automation.account_id,
@@ -570,6 +606,8 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         value: cfg.value ?? 0,
         currency: acct?.default_currency ?? 'USD',
         status: 'open',
+        ctwa_clid: dealCtwaClid,
+        ctwa_source_id: dealCtwaSourceId,
       })
       return 'deal created'
     }
@@ -612,6 +650,128 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         .eq('id', dealId)
       if (assignError) throw new Error(`assign_deal: ${assignError.message}`)
       return `deal ${dealId} assigned to ${profile.id}`
+    }
+
+    case 'send_meta_capi_event': {
+      const cfg = step.step_config as SendMetaCapiEventStepConfig
+      const eventName = (cfg.event_name ?? '').trim()
+      if (!eventName) throw new Error('send_meta_capi_event needs an event_name')
+
+      // This step is meaningful only for the deal_stage_changed trigger,
+      // which puts the deal id on the context.
+      const dealId = args.context.deal_id
+      const stageId = args.context.deal_to_stage_id
+      if (!dealId || !stageId) {
+        return 'skipped: no deal in context (not a deal_stage_changed run)'
+      }
+
+      // Deal + its contact's stored CTWA click id. Prefer the deal's own
+      // snapshot (taken at creation), fall back to the contact.
+      const { data: deal } = await db
+        .from('deals')
+        .select('id, contact_id, value, currency, ctwa_clid')
+        .eq('id', dealId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle()
+      if (!deal) return 'skipped: deal not found'
+
+      let ctwaClid = (deal as { ctwa_clid: string | null }).ctwa_clid ?? null
+      if (!ctwaClid && deal.contact_id) {
+        const { data: contact } = await db
+          .from('contacts')
+          .select('ctwa_clid')
+          .eq('id', deal.contact_id)
+          .eq('account_id', args.automation.account_id)
+          .maybeSingle()
+        ctwaClid = (contact as { ctwa_clid: string | null } | null)?.ctwa_clid ?? null
+      }
+      if (!ctwaClid) {
+        return 'skipped: contact has no ctwa_clid (deal not from a CTWA ad)'
+      }
+
+      // Conversions API credentials live on the account's whatsapp_config.
+      const { data: waCfg } = await db
+        .from('whatsapp_config')
+        .select('waba_id, ctwa_dataset_id, ctwa_capi_token')
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle()
+      const datasetId = (waCfg as { ctwa_dataset_id: string | null } | null)?.ctwa_dataset_id
+      const encryptedCapiToken = (waCfg as { ctwa_capi_token: string | null } | null)?.ctwa_capi_token
+      const wabaId = (waCfg as { waba_id: string | null } | null)?.waba_id
+      if (!datasetId || !encryptedCapiToken || !wabaId) {
+        return 'skipped: account has no Conversions API config (dataset id / token / WABA id)'
+      }
+      // Token is stored encrypted, like access_token. A decrypt failure
+      // (ENCRYPTION_KEY changed) is a real misconfig, not a silent skip.
+      let capiToken: string
+      try {
+        capiToken = decrypt(encryptedCapiToken)
+      } catch {
+        throw new Error(
+          'send_meta_capi_event: stored Conversions API token cannot be decrypted (ENCRYPTION_KEY mismatch)',
+        )
+      }
+
+      // Idempotency: one conversion per (deal, stage, event). The unique
+      // index makes the INSERT the lock — a duplicate raises 23505.
+      const { error: guardErr } = await db.from('ctwa_conversion_dispatches').insert({
+        account_id: args.automation.account_id,
+        deal_id: dealId,
+        stage_id: stageId,
+        event_name: eventName,
+        automation_id: args.automation.id,
+        ctwa_clid: ctwaClid,
+      })
+      if (guardErr) {
+        const msg = guardErr.message ?? ''
+        if (msg.includes('23505') || msg.includes('duplicate key')) {
+          return 'skipped: conversion already sent for this deal + stage'
+        }
+        throw new Error(`send_meta_capi_event guard insert failed: ${msg}`)
+      }
+
+      const rawValue = cfg.value ? interpolate(cfg.value, args).trim() : ''
+      const parsedValue = rawValue ? Number(rawValue) : Number(deal.value ?? 0)
+      const currency =
+        (cfg.currency ? interpolate(cfg.currency, args).trim() : '') ||
+        (deal.currency as string | null) ||
+        'USD'
+
+      const result = await sendCtwaConversion({
+        datasetId,
+        accessToken: capiToken,
+        wabaId,
+        ctwaClid,
+        eventName,
+        eventId: `${dealId}:${stageId}:${eventName}`,
+        value: Number.isNaN(parsedValue) ? undefined : parsedValue,
+        currency,
+        partnerAgent: 'wacrm',
+      })
+
+      // Roll back the guard on failure so moving the deal through the
+      // stage again can retry; keep it (with the status) on success.
+      if (!result.ok) {
+        await db
+          .from('ctwa_conversion_dispatches')
+          .delete()
+          .eq('account_id', args.automation.account_id)
+          .eq('deal_id', dealId)
+          .eq('stage_id', stageId)
+          .eq('event_name', eventName)
+        throw new Error(
+          `Meta Conversions API returned ${result.status}: ${JSON.stringify(result.body).slice(0, 300)}`,
+        )
+      }
+      await db
+        .from('ctwa_conversion_dispatches')
+        .update({ response_status: result.status })
+        .eq('account_id', args.automation.account_id)
+        .eq('deal_id', dealId)
+        .eq('stage_id', stageId)
+        .eq('event_name', eventName)
+
+      return `sent ${eventName} to Meta CAPI (${result.status})`
     }
 
     case 'send_webhook': {
@@ -822,6 +982,14 @@ export function triggerMatches(automation: Automation, ctx: AutomationContext | 
     return Boolean(tagId && cfg?.tag_id && cfg.tag_id === tagId)
   }
 
+  if (automation.trigger_type === 'deal_stage_changed') {
+    const cfg = automation.trigger_config as DealStageChangedTriggerConfig
+    const toStage = ctx?.deal_to_stage_id
+    // Stage ids are pipeline-unique, so `stage_id` alone is the match;
+    // `pipeline_id` in the config only scopes the builder's stage picker.
+    return Boolean(toStage && cfg?.stage_id && cfg.stage_id === toStage)
+  }
+
   return true
 }
 
@@ -913,6 +1081,14 @@ function interpolate(s: string, args: ExecuteArgs): string {
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
+    if (ns === 'deal' && prop) {
+      const c = args.context
+      if (prop === 'value') return c.deal_value == null ? '' : String(c.deal_value)
+      if (prop === 'currency') return c.deal_currency ?? ''
+      if (prop === 'title') return c.deal_title ?? ''
+      if (prop === 'id') return c.deal_id ?? ''
+      return ''
+    }
     return ''
   })
 }

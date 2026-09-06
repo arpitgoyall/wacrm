@@ -392,6 +392,54 @@ describe("triggerMatches — interactive_reply", () => {
   });
 });
 
+describe("triggerMatches — deal_stage_changed", () => {
+  function automation(stage_id: string, pipeline_id?: string): Automation {
+    return {
+      id: "a1",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      name: "deal won → Meta CAPI",
+      trigger_type: "deal_stage_changed",
+      trigger_config: pipeline_id ? { stage_id, pipeline_id } : { stage_id },
+      is_active: true,
+      execution_count: 0,
+      created_at: "",
+      updated_at: "",
+    } as unknown as Automation;
+  }
+
+  it("matches when the deal moved INTO the configured stage", () => {
+    expect(
+      triggerMatches(automation("stg_enrolled"), {
+        deal_to_stage_id: "stg_enrolled",
+        deal_from_stage_id: "stg_lead",
+      }),
+    ).toBe(true);
+  });
+
+  it("does not match a move into a different stage", () => {
+    expect(
+      triggerMatches(automation("stg_enrolled"), { deal_to_stage_id: "stg_lost" }),
+    ).toBe(false);
+  });
+
+  it("does not match with no stage on the context or no stage in config", () => {
+    expect(triggerMatches(automation("stg_enrolled"), {})).toBe(false);
+    expect(
+      triggerMatches(automation(""), { deal_to_stage_id: "stg_enrolled" }),
+    ).toBe(false);
+  });
+
+  it("ignores pipeline_id — stage ids are already pipeline-unique", () => {
+    expect(
+      triggerMatches(automation("stg_enrolled", "pipe_other"), {
+        deal_to_stage_id: "stg_enrolled",
+        deal_pipeline_id: "pipe_sales",
+      }),
+    ).toBe(true);
+  });
+});
+
 describe("triggerMatches — tag_added", () => {
   function automation(tagId?: string): Automation {
     return {

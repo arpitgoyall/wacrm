@@ -623,6 +623,23 @@ async function processMessage(
   if (!contactOutcome) return
   const contactRecord = contactOutcome.contact
 
+  // Persist CTWA ad attribution on the contact so it survives past the
+  // flow run (flow_runs.vars.ctwa_clid is gone by the time a deal
+  // closes days later). Last-touch: each ad tap carries its own
+  // click id, and a conversion sent soon after is attributed to the
+  // most recent click. The `send_meta_capi_event` automation step
+  // reads `contacts.ctwa_clid` from here.
+  if (message.referral?.ctwa_clid || message.referral?.source_id) {
+    await supabaseAdmin()
+      .from('contacts')
+      .update({
+        ctwa_clid: message.referral.ctwa_clid ?? null,
+        ctwa_source_id: message.referral.source_id ?? null,
+      })
+      .eq('id', contactRecord.id)
+      .eq('account_id', accountId)
+  }
+
   // Find or create conversation
   const convResult = await findOrCreateConversation(
     accountId,

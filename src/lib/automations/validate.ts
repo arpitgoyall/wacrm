@@ -151,6 +151,14 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
         issues.push({ path: `${path}.url`, message: 'webhook URL is not a valid URL' })
       }
       break
+    case 'send_meta_capi_event':
+      if (!nonEmpty(c.event_name)) {
+        issues.push({
+          path: `${path}.event_name`,
+          message: 'conversion event name is required',
+        })
+      }
+      break
     case 'close_conversation':
       // No config required.
       break
@@ -210,6 +218,10 @@ export function validateTriggerForActivation(
         path: 'trigger.reply_ids',
         message: 'reply ids cannot be empty strings',
       })
+    }
+  } else if (triggerType === 'deal_stage_changed') {
+    if (!nonEmpty(cfg.stage_id)) {
+      issues.push({ path: 'trigger.stage_id', message: 'a target stage is required' })
     }
   }
 

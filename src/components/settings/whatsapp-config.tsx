@@ -76,6 +76,13 @@ export function WhatsAppConfig() {
   const [verifyToken, setVerifyToken] = useState('');
   const [pin, setPin] = useState('');
   const [tokenEdited, setTokenEdited] = useState(false);
+  // Conversions API (CTWA). The token is write-only from the client:
+  // the row read never returns it, `capiTokenSet` just reflects whether
+  // one is stored, and it's only sent on save when the user types a new
+  // one.
+  const [ctwaDatasetId, setCtwaDatasetId] = useState('');
+  const [ctwaCapiToken, setCtwaCapiToken] = useState('');
+  const [capiTokenSet, setCapiTokenSet] = useState(false);
 
   // Inbound-media mirror (issue #466). Unlike everything else on this
   // page it is NOT part of handleSave: that path insists on re-entering
@@ -138,6 +145,9 @@ export function WhatsAppConfig() {
         setVerifyToken('');
         setPin('');
         setTokenEdited(false);
+        setCtwaDatasetId(data.ctwa_dataset_id || '');
+        setCtwaCapiToken('');
+        setCapiTokenSet(Boolean(data.ctwa_capi_token));
         // Undefined on a row read before migration 039 — treat that as
         // on, matching the webhook's own default.
         setMirrorMedia(data.mirror_inbound_media !== false);
@@ -149,6 +159,9 @@ export function WhatsAppConfig() {
         setVerifyToken('');
         setPin('');
         setTokenEdited(false);
+        setCtwaDatasetId('');
+        setCtwaCapiToken('');
+        setCapiTokenSet(false);
         setMirrorMedia(true);
       }
       // Clear any stale probe result when reloading the row.
@@ -251,7 +264,13 @@ export function WhatsAppConfig() {
         // requires it on first save or when changing numbers; for a
         // simple token rotation, leaving it blank skips re-register.
         pin: pin.trim() || null,
+        // Conversions API (CTWA). Dataset id is plain text; the token is
+        // only sent when the user typed a new one (blank → keep stored).
+        ctwa_dataset_id: ctwaDatasetId.trim() || null,
       };
+      if (ctwaCapiToken.trim()) {
+        payload.ctwa_capi_token = ctwaCapiToken.trim();
+      }
 
       if (tokenEdited && accessToken !== MASKED_TOKEN && accessToken.trim()) {
         payload.access_token = accessToken.trim();
@@ -692,6 +711,32 @@ export function WhatsAppConfig() {
               />
               <p className="text-xs text-muted-foreground leading-relaxed">
                 <span dangerouslySetInnerHTML={{ __html: t('pinHint') }} />
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-muted-foreground">
+                {t('ctwaDatasetId')}
+                <span className="ml-1 text-muted-foreground">{t('optional')}</span>
+              </Label>
+              <Input
+                placeholder={t('ctwaDatasetIdPlaceholder')}
+                value={ctwaDatasetId}
+                onChange={(e) => setCtwaDatasetId(e.target.value)}
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+              />
+              <Label className="text-muted-foreground">{t('ctwaCapiToken')}</Label>
+              <Input
+                type="password"
+                placeholder={
+                  capiTokenSet ? t('tokenHidden') : t('ctwaCapiTokenPlaceholder')
+                }
+                value={ctwaCapiToken}
+                onChange={(e) => setCtwaCapiToken(e.target.value)}
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+              />
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {t('ctwaHint')}
               </p>
             </div>
           </CardContent>

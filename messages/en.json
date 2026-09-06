@@ -895,6 +895,7 @@
         "wait": "Wait",
         "condition": "Condition (If/Else)",
         "send_webhook": "Send Webhook",
+        "send_meta_capi_event": "Send Meta Conversion",
         "close_conversation": "Close Conversation"
       },
       "triggers": {
@@ -929,6 +930,10 @@
         "time_based": {
           "label": "Time-Based",
           "hint": "On a recurring schedule"
+        },
+        "deal_stage_changed": {
+          "label": "Deal Stage Changed",
+          "hint": "When a deal moves into a specific pipeline stage (fires within a minute via the deal-stage cron)"
         }
       },
       "trigger": "Trigger",
@@ -1040,7 +1045,12 @@
         "matchWord": "Whole word",
         "matchWordHint": "Matches the keyword only as a standalone word, so \"k\" no longer fires on \"thanks\". Best for short keywords in space-separated languages; use Contains for languages written without spaces.",
         "matchExact": "Exact",
-        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed."
+        "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed.",
+        "eventNameLabel": "Event name",
+        "placeholderEventName": "Purchase",
+        "currencyLabel": "Currency",
+        "placeholderCurrency": "USD",
+        "metaCapiHint": "Sends a conversion to Meta's Conversions API using the contact's Click-to-WhatsApp click id. Skips silently when the deal isn't from a CTWA ad, or the account has no dataset id / token set on the WhatsApp config. Leave value and currency blank to use the deal's own fields; both accept deal.value and vars.x placeholders."
       }
     }
   },
@@ -1541,6 +1551,11 @@
       "optional": "(optional)",
       "pinPlaceholder": "6-digit PIN from Meta WhatsApp Manager",
       "pinHint": "Needed only to wire inbound messages for a production number. Set it in Meta Business Manager → WhatsApp Accounts → Phone Numbers → Two-step verification, then paste it here so wacrm can subscribe the number — otherwise Meta routes inbound events to whichever app last claimed it (the symptom that hits second numbers under a shared WABA). Meta test numbers have no PIN and are pre-registered — leave this blank for them. Leaving it blank also keeps an existing registration untouched.",
+      "ctwaDatasetId": "Conversions API dataset ID",
+      "ctwaDatasetIdPlaceholder": "Meta dataset (pixel) ID",
+      "ctwaCapiToken": "Conversions API access token",
+      "ctwaCapiTokenPlaceholder": "System-user token linked to the dataset",
+      "ctwaHint": "Optional. Lets a 'Send Meta Conversion' automation step report closed deals back to Meta for Click-to-WhatsApp ad attribution. Find the dataset ID in Events Manager; generate a system-user token with the dataset linked to this WABA. Token is encrypted at rest; leave blank to keep the stored one.",
       "webhookTitle": "Webhook Configuration",
       "webhookDesc": "Use this URL as your webhook callback in the Meta App Dashboard.",
       "webhookUrl": "Webhook Callback URL",

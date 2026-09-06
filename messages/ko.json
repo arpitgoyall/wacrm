@@ -895,6 +895,7 @@
         "wait": "대기",
         "condition": "조건 (If/Else)",
         "send_webhook": "웹훅 보내기",
+        "send_meta_capi_event": "Meta 전환 전송",
         "close_conversation": "대화 닫기"
       },
       "triggers": {
@@ -929,6 +930,10 @@
         "time_based": {
           "label": "시간 기반",
           "hint": "반복 일정에 따라"
+        },
+        "deal_stage_changed": {
+          "label": "딜 단계 변경됨",
+          "hint": "딜이 특정 파이프라인 단계로 이동할 때 (딜 단계 크론으로 1분 이내에 실행됨)"
         }
       },
       "trigger": "트리거",
@@ -1040,7 +1045,12 @@
         "matchWord": "단어 단위 일치",
         "matchWordHint": "키워드가 독립된 단어일 때만 일치하므로 \"k\"가 \"thanks\"에서 실행되지 않습니다. 공백으로 단어를 구분하는 언어의 짧은 키워드에 적합하며, 공백 없이 표기하는 언어에는 \"포함\"을 사용하세요.",
         "matchExact": "정확히 일치",
-        "closeConversationHint": "대화 상태를 \"닫힘\"으로 설정합니다. 추가 설정이 필요 없습니다."
+        "closeConversationHint": "대화 상태를 \"닫힘\"으로 설정합니다. 추가 설정이 필요 없습니다.",
+        "eventNameLabel": "이벤트 이름",
+        "placeholderEventName": "Purchase",
+        "currencyLabel": "통화",
+        "placeholderCurrency": "USD",
+        "metaCapiHint": "연락처의 Click-to-WhatsApp 클릭 ID를 사용해 Meta Conversions API로 전환을 전송합니다. 딜이 CTWA 광고에서 시작되지 않았거나 계정의 WhatsApp 설정에 데이터셋 ID/토큰이 없으면 조용히 건너뜁니다. 값과 통화를 비워두면 딜 자체 필드가 사용되며, 두 필드 모두 deal.value 및 vars.x 자리표시자를 지원합니다."
       }
     }
   },
@@ -1541,6 +1551,11 @@
       "optional": "(선택)",
       "pinPlaceholder": "Meta WhatsApp 관리자에서 발급받은 6자리 PIN",
       "pinHint": "프로덕션 번호의 수신 메시지를 연결하려면 필요합니다. Meta 비즈니스 관리자 → WhatsApp 계정 → 전화번호 → 2단계 인증에서 설정한 뒤 여기에 붙여넣으면 wacrm이 해당 번호를 구독할 수 있습니다 — 그렇지 않으면 Meta는 마지막으로 이 번호를 등록한 앱으로 수신 이벤트를 보냅니다(공유 WABA 하의 두 번째 번호에서 흔히 발생하는 증상입니다). Meta 테스트 번호는 PIN이 없고 이미 등록되어 있으므로 이 필드를 비워두세요. 비워두면 기존 등록도 그대로 유지됩니다.",
+      "ctwaDatasetId": "Conversions API 데이터셋 ID",
+      "ctwaDatasetIdPlaceholder": "Meta 데이터셋(픽셀) ID",
+      "ctwaCapiToken": "Conversions API 액세스 토큰",
+      "ctwaCapiTokenPlaceholder": "데이터셋에 연결된 시스템 사용자 토큰",
+      "ctwaHint": "선택 사항. 'Meta 전환 전송' 자동화 단계가 성사된 딜을 Meta에 보고해 Click-to-WhatsApp 광고 기여를 추적할 수 있게 합니다. 데이터셋 ID는 이벤트 관리자에서 확인하고, 이 WABA에 데이터셋을 연결한 시스템 사용자 토큰을 생성하세요. 토큰은 암호화되어 저장되며, 비워두면 저장된 값이 유지됩니다.",
       "webhookTitle": "웹훅 설정",
       "webhookDesc": "Meta 앱 대시보드의 웹훅 콜백으로 이 URL을 사용하세요.",
       "webhookUrl": "웹훅 콜백 URL",

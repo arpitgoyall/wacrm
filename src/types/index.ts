@@ -313,6 +313,14 @@ export interface WhatsAppConfig {
    * inbound attachments expire. Migration 039.
    */
   mirror_inbound_media?: boolean;
+  /**
+   * Meta Conversions API for Business Messaging (migration 050). The
+   * dataset (pixel) id is plain text; `ctwa_capi_token` is a system-user
+   * token stored encrypted like `access_token` and never returned to the
+   * client. Consumed by the `send_meta_capi_event` automation step.
+   */
+  ctwa_dataset_id?: string | null;
+  ctwa_capi_token?: string | null;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)
@@ -480,7 +488,11 @@ export type AutomationTriggerType =
   | 'time_based'
   /** Customer tapped a reply button / list row whose id matches; lets
    *  multi-step menus be chained across automations. */
-  | 'interactive_reply';
+  | 'interactive_reply'
+  /** A deal moved into a specific pipeline stage. Fired by the
+   *  deal-stage-events cron draining the `deal_stage_events` outbox
+   *  (migration 050), not by the inbound webhook. */
+  | 'deal_stage_changed';
 
 export type AutomationStepType =
   | 'send_message'
@@ -496,6 +508,7 @@ export type AutomationStepType =
   | 'wait'
   | 'condition'
   | 'send_webhook'
+  | 'send_meta_capi_event'
   | 'close_conversation';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
@@ -529,12 +542,24 @@ export interface InteractiveReplyTriggerConfig {
   reply_ids: string[];
 }
 
+export interface DealStageChangedTriggerConfig {
+  /** Stage the deal must have moved INTO for the automation to fire. */
+  stage_id: string;
+  /**
+   * Optional — narrow to one pipeline. Stage ids are already
+   * pipeline-unique, so this is mostly a builder-UX aid (it scopes the
+   * stage picker); the engine still matches on `stage_id` alone.
+   */
+  pipeline_id?: string;
+}
+
 export type AutomationTriggerConfig =
   | Record<string, never>
   | KeywordMatchTriggerConfig
   | TagTriggerConfig
   | TimeBasedTriggerConfig
   | InteractiveReplyTriggerConfig
+  | DealStageChangedTriggerConfig
   | Record<string, unknown>;
 
 export interface SendMessageStepConfig {
@@ -624,6 +649,33 @@ export interface SendWebhookStepConfig {
   body_template?: string;
 }
 
+/**
+ * Send a conversion event to Meta's Conversions API for Business
+ * Messaging, attributing a closed deal back to the Click-to-WhatsApp ad
+ * the contact came from. No-ops when the contact has no stored
+ * `ctwa_clid` (deal didn't originate from a CTWA ad) or the account has
+ * no `ctwa_dataset_id` / `ctwa_capi_token` on `whatsapp_config`.
+ *
+ * Dedup: one event per (deal, stage, event_name) — enforced by
+ * `ctwa_conversion_dispatches` — so re-entering the stage won't double
+ * count.
+ */
+export interface SendMetaCapiEventStepConfig {
+  /** Meta standard event name (e.g. "Purchase", "Lead") or a custom one. */
+  event_name: string;
+  /**
+   * Optional monetary value for `custom_data.value`. Supports
+   * `{{ deal.value }}` / `{{ vars.* }}` interpolation. Falls back to the
+   * deal's own `value` column when blank.
+   */
+  value?: string;
+  /**
+   * ISO 4217 currency for `custom_data.currency`. Supports
+   * interpolation; falls back to the deal's `currency` column, then USD.
+   */
+  currency?: string;
+}
+
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendButtonsStepConfig
@@ -637,6 +689,7 @@ export type AutomationStepConfig =
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
+  | SendMetaCapiEventStepConfig
   | Record<string, never>
   | Record<string, unknown>;
 

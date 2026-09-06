@@ -185,7 +185,17 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { phone_number_id, waba_id, access_token, verify_token, pin } = body
+    const {
+      phone_number_id,
+      waba_id,
+      access_token,
+      verify_token,
+      pin,
+      // Conversions API (CTWA) — optional. `ctwa_capi_token` is a
+      // system-user token; encrypted at rest like access_token.
+      ctwa_dataset_id,
+      ctwa_capi_token,
+    } = body
 
     if (!access_token || !phone_number_id) {
       return NextResponse.json(
@@ -254,9 +264,18 @@ export async function POST(request: Request) {
     // Encrypt sensitive tokens before storing
     let encryptedAccessToken: string
     let encryptedVerifyToken: string | null
+    let encryptedCapiToken: string | null | undefined
     try {
       encryptedAccessToken = encrypt(access_token)
       encryptedVerifyToken = verify_token ? encrypt(verify_token) : null
+      // undefined → leave the stored value untouched on update;
+      // '' → explicitly clear it; a value → encrypt and replace.
+      encryptedCapiToken =
+        ctwa_capi_token === undefined
+          ? undefined
+          : ctwa_capi_token
+            ? encrypt(String(ctwa_capi_token))
+            : null
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown encryption error'
       console.error('Encryption failed:', message)
@@ -364,6 +383,14 @@ export async function POST(request: Request) {
       subscribed_apps_at: subscribedAppsAt ?? null,
       last_registration_error: registrationError,
       updated_at: new Date().toISOString(),
+      // Conversions API config. Only include keys the caller actually
+      // sent so an unrelated save doesn't wipe them.
+      ...(ctwa_dataset_id !== undefined
+        ? { ctwa_dataset_id: ctwa_dataset_id ? String(ctwa_dataset_id) : null }
+        : {}),
+      ...(encryptedCapiToken !== undefined
+        ? { ctwa_capi_token: encryptedCapiToken }
+        : {}),
     }
 
     if (existing) {
