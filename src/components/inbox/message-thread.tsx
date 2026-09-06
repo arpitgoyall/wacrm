@@ -52,7 +52,7 @@ import {
 import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { AiThreadBanner } from "./ai-thread-banner";
-import { SalesPipelineControl } from "./sales-pipeline-control";
+import { PipelineStageControl } from "./pipeline-stage-control";
 import { buildReplyPreview } from "./reply-quote";
 import { renderTemplateBody } from "@/lib/whatsapp/template-body";
 import { toast } from "sonner";
@@ -170,7 +170,7 @@ export function MessageThread({
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
 
-  const { user, accountId, account, isSalesAgent, defaultCurrency } = useAuth();
+  const { user, accountId, account, isSalesAgent, isSupportAgent, defaultCurrency } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -892,6 +892,15 @@ export function MessageThread({
     ? (currentAssignee?.full_name ?? t("assigned"))
     : t("assign");
 
+  // Sales/support agents see their team's configured pipeline instead of
+  // conversation status — falls back to status when the account hasn't
+  // configured one (see Settings → Deals & currency).
+  const teamPipelineId = isSalesAgent
+    ? (account?.sales_pipeline_id ?? null)
+    : isSupportAgent
+      ? (account?.support_pipeline_id ?? null)
+      : null;
+
   return (
     // `min-w-0` is load-bearing: the page already puts min-w-0 on the
     // thread's flex *wrapper* (issue #165), but this root keeps the
@@ -996,16 +1005,16 @@ export function MessageThread({
             </button>
           )}
 
-          {/* Status dropdown — sales-tagged agents see the sales
-              pipeline's stage instead; conversation status has no
-              bearing on their workflow. Falls back to the normal
-              status control if no sales pipeline is configured yet. */}
-          {isSalesAgent && account?.sales_pipeline_id && accountId && user ? (
-            <SalesPipelineControl
+          {/* Status dropdown — sales/support-tagged agents see their
+              team's pipeline stage instead; conversation status has no
+              bearing on that workflow. Falls back to the normal status
+              control when no pipeline is configured for their team. */}
+          {teamPipelineId && accountId && user ? (
+            <PipelineStageControl
               contactId={contact.id}
               contactLabel={displayName}
               accountId={accountId}
-              pipelineId={account.sales_pipeline_id}
+              pipelineId={teamPipelineId}
               userId={user.id}
               defaultCurrency={defaultCurrency}
             />

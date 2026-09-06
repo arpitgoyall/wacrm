@@ -69,6 +69,8 @@ export interface Account {
   contact_table_columns?: string[];
   /** Pipeline sales-tagged agents see in the inbox (migration 048). */
   sales_pipeline_id?: string | null;
+  /** Pipeline support-tagged agents see in the inbox (migration 049). */
+  support_pipeline_id?: string | null;
 }
 
 /**

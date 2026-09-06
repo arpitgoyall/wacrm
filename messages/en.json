@@ -1714,7 +1714,13 @@
       "salesPipelineNone": "None — sales agents see conversation status",
       "salesPipelineNoPipelines": "Create a pipeline first (Pipelines page) to choose one here.",
       "salesPipelineSaveFailed": "Failed to save sales pipeline",
-      "salesPipelineSaveSuccess": "Sales pipeline updated"
+      "salesPipelineSaveSuccess": "Sales pipeline updated",
+      "supportPipelineTitle": "Support pipeline",
+      "supportPipelineDesc": "Agents tagged \"Support\" (Settings → Team members) see this pipeline's stages in the inbox instead of conversation status when one is set. \"Assign to\" stays visible either way.",
+      "supportPipelineLabel": "Pipeline",
+      "supportPipelineNone": "None — support agents see conversation status (default)",
+      "supportPipelineSaveFailed": "Failed to save support pipeline",
+      "supportPipelineSaveSuccess": "Support pipeline updated"
     },
     "aiConfig": {
       "title": "Agent setup",

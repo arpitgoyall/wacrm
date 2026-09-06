@@ -1714,7 +1714,13 @@
       "salesPipelineNone": "없음 — 영업 에이전트도 대화 상태를 봅니다",
       "salesPipelineNoPipelines": "먼저 파이프라인 페이지에서 파이프라인을 만들어야 여기서 선택할 수 있습니다.",
       "salesPipelineSaveFailed": "영업 파이프라인을 저장하지 못했습니다",
-      "salesPipelineSaveSuccess": "영업 파이프라인이 업데이트되었습니다"
+      "salesPipelineSaveSuccess": "영업 파이프라인이 업데이트되었습니다",
+      "supportPipelineTitle": "고객지원 파이프라인",
+      "supportPipelineDesc": "\"고객지원\"으로 태그된 에이전트(설정 → 팀원)는 설정된 경우 받은편지함에서 대화 상태 대신 이 파이프라인의 단계를 보게 됩니다. \"담당자 지정\"은 어느 쪽이든 계속 표시됩니다.",
+      "supportPipelineLabel": "파이프라인",
+      "supportPipelineNone": "없음 — 고객지원 에이전트는 대화 상태를 봅니다 (기본값)",
+      "supportPipelineSaveFailed": "고객지원 파이프라인을 저장하지 못했습니다",
+      "supportPipelineSaveSuccess": "고객지원 파이프라인이 업데이트되었습니다"
     },
     "aiConfig": {
       "title": "에이전트 설정",

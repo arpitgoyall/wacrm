@@ -50,6 +50,8 @@ interface AccountSummary {
   default_currency: string;
   /** Pipeline sales-tagged agents see in the inbox (migration 048). */
   sales_pipeline_id: string | null;
+  /** Pipeline support-tagged agents see in the inbox (migration 049). */
+  support_pipeline_id: string | null;
 }
 
 /**
@@ -137,6 +139,11 @@ interface AuthContextValue {
    *  pipeline-vs-status control and hides "assign to" (owners/admins/
    *  viewers always see the normal controls regardless of this tag). */
   isSalesAgent: boolean;
+  /** True iff this member is an agent tagged 'support' — gates the
+   *  inbox's pipeline-vs-status control (falls back to status when no
+   *  support pipeline is configured). Unlike sales, "assign to" stays
+   *  visible for support agents. */
+  isSupportAgent: boolean;
   /** True if the caller can manage members (admin+). */
   canManageMembers: boolean;
   /** True if the caller can edit account-wide settings (admin+). */
@@ -253,7 +260,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .from("accounts")
             // default_currency added in migration 021; narrowed to the
             // USD fallback below for older schemas where it reads null.
-            .select("id, name, default_currency, sales_pipeline_id")
+            .select("id, name, default_currency, sales_pipeline_id, support_pipeline_id")
             .eq("id", data.account_id)
             .maybeSingle();
           if (accountErr) {
@@ -269,6 +276,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               name: account.name,
               default_currency: account.default_currency ?? DEFAULT_CURRENCY,
               sales_pipeline_id: account.sales_pipeline_id ?? null,
+              support_pipeline_id: account.support_pipeline_id ?? null,
             };
           }
         }
@@ -429,6 +437,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       canSendMessages: role ? canSendMessagesFor(role) : false,
       teamType,
       isSalesAgent: role === "agent" && teamType === "sales",
+      isSupportAgent: role === "agent" && teamType === "support",
     };
   }, [profile?.account_role, profile?.account_id, profile?.team_type]);
 
@@ -502,6 +511,7 @@ export function useAuth(): AuthContextValue {
       canSendMessages: false,
       teamType: null,
       isSalesAgent: false,
+      isSupportAgent: false,
     };
   }
   return ctx;

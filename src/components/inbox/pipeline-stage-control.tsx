@@ -1,14 +1,16 @@
 "use client";
 
 // ============================================================
-// SalesPipelineControl — inbox header replacement for the Status
-// dropdown, shown only to agents tagged "sales" (see useAuth().isSalesAgent).
+// PipelineStageControl — inbox header replacement for the Status
+// dropdown, shown to agents tagged "sales" or "support" whose team
+// has a pipeline configured (see useAuth().isSalesAgent /
+// isSupportAgent and account.sales_pipeline_id / support_pipeline_id).
 //
-// Sales agents care about where a contact sits in the sales pipeline,
-// not the WhatsApp conversation's open/pending/closed bookkeeping — so
-// this shows the contact's deal in the account's configured sales
-// pipeline (Settings → Deals & currency) as a stage picker instead.
-// If no deal exists yet for this contact in that pipeline, a
+// These agents care about where a contact sits in a sales/support
+// pipeline, not the WhatsApp conversation's open/pending/closed
+// bookkeeping — so this shows the contact's deal in the given pipeline
+// (configured in Settings → Deals & currency) as a stage picker
+// instead. If no deal exists yet for this contact in that pipeline, a
 // "Create deal" affordance seeds one in the pipeline's first stage.
 // ============================================================
 
@@ -27,7 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { PipelineStage } from "@/types";
 
-interface SalesPipelineControlProps {
+interface PipelineStageControlProps {
   contactId: string;
   contactLabel: string;
   accountId: string;
@@ -41,14 +43,14 @@ interface DealRow {
   stage_id: string;
 }
 
-export function SalesPipelineControl({
+export function PipelineStageControl({
   contactId,
   contactLabel,
   accountId,
   pipelineId,
   userId,
   defaultCurrency,
-}: SalesPipelineControlProps) {
+}: PipelineStageControlProps) {
   const t = useTranslations("Inbox.messageThread");
   const supabase = createClient();
 
@@ -66,10 +68,10 @@ export function SalesPipelineControl({
         .select("id, pipeline_id, name, position, color, created_at")
         .eq("pipeline_id", pipelineId)
         .order("position", { ascending: true }),
-      // Most recent still-open deal for this contact in the sales
-      // pipeline — mirrors the same "open" filter used by the
-      // automation engine's assign_deal step, so a stale won/lost deal
-      // never masks an active one.
+      // Most recent still-open deal for this contact in this pipeline —
+      // mirrors the same "open" filter used by the automation engine's
+      // assign_deal step, so a stale won/lost deal never masks an
+      // active one.
       supabase
         .from("deals")
         .select("id, stage_id")
