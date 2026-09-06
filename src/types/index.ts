@@ -602,13 +602,19 @@ export type ConditionSubject =
   | 'contact_field'
   | 'tag_presence'
   | 'message_content'
-  | 'time_of_day';
+  | 'time_of_day'
+  | 'variable';
 
 export interface ConditionStepConfig {
   subject: ConditionSubject;
-  /** e.g. field name, tag id, substring, or "HH:mm-HH:mm" depending on subject */
+  /**
+   * Depends on subject: field name (contact_field), tag id (tag_presence),
+   * substring (message_content), "HH:mm-HH:mm" (time_of_day), or the
+   * workflow-variable name (variable) — e.g. `ctwa_source_id`, forwarded
+   * into the run context by a flow's set_tag → tag_added bridge.
+   */
   operand?: string;
-  /** For contact_field equals / message_content contains — comparison value */
+  /** For contact_field / variable (exact equals) and message_content (contains) — comparison value */
   value?: string;
 }
 

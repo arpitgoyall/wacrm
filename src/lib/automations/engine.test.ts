@@ -104,7 +104,11 @@ vi.mock("./meta-send", () => ({
   engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
 }));
 
-import { runAutomationsForTrigger, triggerMatches } from "./engine";
+import {
+  matchesVariableCondition,
+  runAutomationsForTrigger,
+  triggerMatches,
+} from "./engine";
 import type { Automation, KeywordMatchTriggerConfig } from "@/types";
 
 const ACCOUNT = "acct-1";
@@ -548,5 +552,27 @@ describe("triggerMatches — keyword_match", () => {
   it("ignores empty keywords and empty messages in `word` mode", () => {
     expect(on(automation({ keywords: [""], match_type: "word" }), "anything")).toBe(false);
     expect(on(automation({ keywords: ["hi"], match_type: "word" }), "")).toBe(false);
+  });
+});
+
+describe("matchesVariableCondition — `variable` condition subject", () => {
+  it("matches on exact string equality (e.g. a CTWA ad id)", () => {
+    expect(matchesVariableCondition("120210001111", "120210001111")).toBe(true);
+    expect(matchesVariableCondition("120210001111", "120210002222")).toBe(false);
+  });
+
+  it("coerces a non-string variable before comparing", () => {
+    expect(matchesVariableCondition(42, "42")).toBe(true);
+    expect(matchesVariableCondition(true, "true")).toBe(true);
+  });
+
+  it("never matches when the variable is absent from the run context", () => {
+    expect(matchesVariableCondition(undefined, "")).toBe(false);
+    expect(matchesVariableCondition(null, "north")).toBe(false);
+  });
+
+  it("treats a missing expected value as the empty string", () => {
+    expect(matchesVariableCondition("", undefined)).toBe(true);
+    expect(matchesVariableCondition("x", undefined)).toBe(false);
   });
 });

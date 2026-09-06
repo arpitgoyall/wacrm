@@ -857,6 +857,17 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
       const text = (args.context.message_text ?? '').toString()
       return text.toLowerCase().includes((cfg.value ?? '').toLowerCase())
     }
+    case 'variable': {
+      // Branch on a workflow variable in the run context. The common
+      // case: `ctwa_source_id` (and the other `ctwa_*` keys) seeded onto
+      // flow_runs.vars from a Click-to-WhatsApp ad referral, then handed
+      // to this automation by the flow's set_tag → tag_added dispatch
+      // (tag-events.ts forwards run.vars as context.vars). `operand` is
+      // the var name; comparison is exact string equality, like
+      // contact_field. A var absent from the context never matches.
+      if (!cfg.operand) return false
+      return matchesVariableCondition(args.context.vars?.[cfg.operand], cfg.value)
+    }
     case 'time_of_day': {
       // operand form "HH:mm-HH:mm" — true if now is within that window
       // (supports over-midnight ranges like "18:00-09:00").
@@ -875,6 +886,21 @@ async function evaluateCondition(cfg: ConditionStepConfig, args: ExecuteArgs): P
     default:
       return false
   }
+}
+
+/**
+ * Exact-equality test for the `variable` condition subject. Pure +
+ * exported so engine.test can exercise it without the Supabase mock.
+ * A `null`/`undefined` var (key absent from the run context) never
+ * matches; a non-string var is coerced before comparison; a missing
+ * `expected` compares against the empty string.
+ */
+export function matchesVariableCondition(
+  varValue: unknown,
+  expected: string | undefined,
+): boolean {
+  if (varValue == null) return false
+  return String(varValue) === String(expected ?? '')
 }
 
 function waitMs(cfg: WaitStepConfig): number {
