@@ -70,6 +70,28 @@ interface WhatsAppMessage {
   button?: { text?: string; payload?: string }
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
+  /**
+   * Click-to-WhatsApp (CTWA) ad referral. Meta attaches this to the
+   * FIRST inbound after the customer taps a CTWA ad (and again on any
+   * later ad tap). `source_id` is the ad id — the value that tells two
+   * audiences apart when they run the same campaign/creative;
+   * `ctwa_clid` is the click id for Conversions API attribution. The
+   * Flows engine flattens these into `flow_runs.vars` (`ctwa_*`) when
+   * it starts a run, so a `first_inbound_message` flow can branch on
+   * which ad the customer came from. Absent for organic inbound.
+   */
+  referral?: {
+    source_url?: string
+    source_id?: string
+    source_type?: string
+    headline?: string
+    body?: string
+    media_type?: string
+    image_url?: string
+    video_url?: string
+    thumbnail_url?: string
+    ctwa_clid?: string
+  }
 }
 
 interface WhatsAppWebhookEntry {
@@ -807,6 +829,11 @@ async function processMessage(
             meta_message_id: message.id,
           },
     isFirstInboundMessage,
+    // CTWA ad referral, when present. The engine only reads it when it
+    // STARTS a run (seeds `flow_runs.vars.ctwa_*`); an in-progress run
+    // ignores it. Meta only sends it on the first inbound after an ad
+    // tap, which lines up with the `first_inbound_message` trigger.
+    referral: message.referral,
   })
   const flowConsumed = flowResult.consumed
 

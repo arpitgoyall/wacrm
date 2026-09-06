@@ -47,7 +47,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
-import { slugify, type BuilderNode } from "../shared";
+import { flowVarSuggestions, slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
 
 interface NodeConfigFormProps {
@@ -673,6 +673,12 @@ function ConditionForm({
   const operator = cfg.operator ?? "equals";
   const showValue = operator === "equals" || operator === "contains";
 
+  // Native suggestion list for the free-text var-name box: the ctwa_*
+  // ad-referral keys plus any var_key captured upstream in this flow.
+  // Id is per-node so two condition forms on screen don't collide.
+  const varListId = `cond-vars-${currentKey}`;
+  const varSuggestions = flowVarSuggestions(allNodes);
+
   return (
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -753,14 +759,22 @@ function ConditionForm({
               </SelectContent>
             </Select>
           ) : (
-            <Input
-              value={cfg.subject_key ?? ""}
-              onChange={(e) =>
-                onUpdateConfig({ subject_key: e.target.value })
-              }
-              placeholder={t("varKeyPlaceholder")}
-              className="bg-muted font-mono text-xs"
-            />
+            <>
+              <Input
+                value={cfg.subject_key ?? ""}
+                onChange={(e) =>
+                  onUpdateConfig({ subject_key: e.target.value })
+                }
+                placeholder={t("varKeyPlaceholder")}
+                className="bg-muted font-mono text-xs"
+                list={varListId}
+              />
+              <datalist id={varListId}>
+                {varSuggestions.map((v) => (
+                  <option key={v} value={v} />
+                ))}
+              </datalist>
+            </>
           )}
         </div>
       </div>

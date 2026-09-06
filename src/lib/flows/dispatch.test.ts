@@ -317,3 +317,53 @@ describe("dispatchInboundToFlows — entry triggers (#490)", () => {
     expect(startedRuns()).toHaveLength(1);
   });
 });
+
+describe("dispatchInboundToFlows — CTWA referral seeding (option B)", () => {
+  const FIRST_INBOUND_FLOW = {
+    ...KEYWORD_FLOW,
+    trigger_type: "first_inbound_message",
+    trigger_config: {},
+  };
+
+  type Referral = Parameters<typeof dispatchInboundToFlows>[0]["referral"];
+  function dispatchFirstInbound(referral?: Referral) {
+    return dispatchInboundToFlows({
+      accountId: "acct-1",
+      userId: "u-1",
+      contactId: "ct-1",
+      conversationId: "cv-1",
+      message: { kind: "text", text: "hi", meta_message_id: "m1" },
+      isFirstInboundMessage: true,
+      referral,
+    });
+  }
+
+  it("seeds flow_runs.vars with ctwa_* keys when the run starts from an ad tap", async () => {
+    h.state.flows = [FIRST_INBOUND_FLOW];
+
+    const result = await dispatchFirstInbound({
+      source_id: "120210002222",
+      source_type: "ad",
+      headline: "Diwali Offer - South",
+      ctwa_clid: "AbC123",
+    });
+
+    expect(result.consumed).toBe(true);
+    const [run] = startedRuns();
+    expect(run.row.vars).toEqual({
+      ctwa_source_id: "120210002222",
+      ctwa_source_type: "ad",
+      ctwa_headline: "Diwali Offer - South",
+      ctwa_clid: "AbC123",
+    });
+  });
+
+  it("omits vars entirely for an organic first inbound (column keeps its default)", async () => {
+    h.state.flows = [FIRST_INBOUND_FLOW];
+
+    await dispatchFirstInbound(undefined);
+
+    const [run] = startedRuns();
+    expect(run.row).not.toHaveProperty("vars");
+  });
+});

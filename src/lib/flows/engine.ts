@@ -45,6 +45,7 @@ import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
+  type CtwaReferral,
   type DispatchInboundInput,
   type DispatchInboundResult,
   type FlowNodeRow,
@@ -211,6 +212,44 @@ export function evaluateConditionPredicate(args: {
       if (args.subjectValue === undefined) return false;
       return args.subjectValue.includes(args.configValue ?? "");
   }
+}
+
+/**
+ * Flatten a CTWA ad referral into the `ctwa_*` vars seeded onto
+ * `flow_runs.vars` when a run starts. Only non-empty string fields are
+ * copied, so `condition`'s `absent` operator correctly reports a
+ * missing ad (an organic first inbound produces `{}` → no keys → the
+ * INSERT keeps the column's `'{}'::jsonb` default).
+ *
+ * Exposed keys (all strings), usable as `{{vars.KEY}}` in any text
+ * field and as a `condition` node subject (`subject: "var"`):
+ *   ctwa_source_id    — the ad id; the value that differs between two
+ *                       audiences running the same campaign/creative
+ *   ctwa_source_type  — "ad" | "post"
+ *   ctwa_source_url   — the ad/post permalink
+ *   ctwa_headline     — the ad headline
+ *   ctwa_body         — the ad body text
+ *   ctwa_media_type   — "image" | "video"
+ *   ctwa_clid         — the click id, for Conversions API attribution
+ *
+ * Pure + exported for unit testing.
+ */
+export function ctwaReferralVars(
+  referral: CtwaReferral | undefined,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!referral) return out;
+  const put = (key: string, value: unknown) => {
+    if (typeof value === "string" && value.length > 0) out[key] = value;
+  };
+  put("ctwa_source_id", referral.source_id);
+  put("ctwa_source_type", referral.source_type);
+  put("ctwa_source_url", referral.source_url);
+  put("ctwa_headline", referral.headline);
+  put("ctwa_body", referral.body);
+  put("ctwa_media_type", referral.media_type);
+  put("ctwa_clid", referral.ctwa_clid);
+  return out;
 }
 
 // ============================================================
@@ -1143,6 +1182,13 @@ async function startNewRun(
   input: DispatchInboundInput,
   nodes: Map<string, FlowNodeRow>,
 ): Promise<DispatchInboundResult> {
+  // CTWA ad referral → starting vars. Empty object when the customer
+  // arrived organically; then we omit `vars` from the INSERT entirely
+  // so the column keeps its `'{}'::jsonb` default (behaviour unchanged
+  // for every non-ad run).
+  const seededVars = ctwaReferralVars(input.referral);
+  const hasSeededVars = Object.keys(seededVars).length > 0;
+
   // INSERT — partial unique index `idx_one_active_run_per_contact`
   // catches concurrent inserts with 23505. We catch and return as
   // consumed:true (the parallel webhook handles it).
@@ -1162,6 +1208,7 @@ async function startNewRun(
       conversation_id: input.conversationId,
       status: "active",
       current_node_key: flow.entry_node_id,
+      ...(hasSeededVars ? { vars: seededVars } : {}),
     })
     .select("*")
     .maybeSingle();
@@ -1175,10 +1222,20 @@ async function startNewRun(
     return { consumed: false, outcome: "no_match" };
   }
   const run = inserted as FlowRunRow;
+  // Belt-and-braces: rely on the INSERT's RETURNING for `run.vars`, but
+  // if the fake/driver didn't echo it back, mirror the seed locally so
+  // the advance loop's `{{vars.ctwa_*}}` interpolation still resolves.
+  if (hasSeededVars && (!run.vars || Object.keys(run.vars).length === 0)) {
+    run.vars = seededVars;
+  }
   await logEvent(db, run.id, "started", flow.entry_node_id, {
     flow_id: flow.id,
     trigger_type: flow.trigger_type,
     meta_message_id: input.message.meta_message_id,
+    // Non-PII ad attribution — handy when eyeballing the runs viewer.
+    ...(hasSeededVars
+      ? { ctwa_source_id: seededVars.ctwa_source_id ?? null }
+      : {}),
   });
   // Bump the flow's execution counter — used by the builder UI to
   // surface "X runs since activation" on the flow card.

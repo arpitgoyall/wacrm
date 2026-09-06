@@ -320,6 +320,55 @@ export const DEFAULT_FALLBACK_POLICY: FlowFallbackPolicy = {
 // ============================================================
 
 /**
+ * Click-to-WhatsApp (CTWA) ad referral, lifted by the webhook from
+ * Meta's `messages[0].referral`. Meta attaches it to the FIRST inbound
+ * after the customer taps a CTWA ad (and again on any later ad tap) —
+ * regular follow-up messages carry nothing.
+ *
+ * The runner flattens this into `flow_runs.vars` under `ctwa_*` keys
+ * when it STARTS a run (see `ctwaReferralVars` in engine.ts), so every
+ * downstream node can read `{{vars.ctwa_source_id}}` and `condition`
+ * nodes can branch on which ad the customer came from. `source_id` is
+ * the ad id — the value that differs between two audiences running the
+ * same creative; `ctwa_clid` is the click id for Conversions API
+ * attribution.
+ *
+ * Every field is optional: Meta omits what the ad doesn't have, and an
+ * organic first inbound has no referral at all.
+ */
+export interface CtwaReferral {
+  source_url?: string;
+  source_id?: string;
+  /** "ad" | "post" — kept as a plain string; Meta may add more. */
+  source_type?: string;
+  headline?: string;
+  body?: string;
+  media_type?: string;
+  image_url?: string;
+  video_url?: string;
+  thumbnail_url?: string;
+  ctwa_clid?: string;
+}
+
+/**
+ * The `flow_runs.vars` keys that `ctwaReferralVars` (engine.ts) may
+ * seed on run start. The order here is the order the builder's
+ * variable-suggestion `<datalist>` shows them in. Keep it in sync with
+ * `ctwaReferralVars` — this list is the UI's only view of what a CTWA
+ * ad can contribute, so a key added there but not here is invisible in
+ * the builder.
+ */
+export const CTWA_VAR_KEYS = [
+  "ctwa_source_id",
+  "ctwa_source_type",
+  "ctwa_source_url",
+  "ctwa_headline",
+  "ctwa_body",
+  "ctwa_media_type",
+  "ctwa_clid",
+] as const;
+
+/**
  * Normalised view of an inbound message that the runner needs. The
  * webhook lifts this out of the raw Meta payload before invoking the
  * runner; keeps the runner free of any WhatsApp-API specifics.
@@ -351,6 +400,14 @@ export interface DispatchInboundInput {
   contactId: string;
   conversationId: string;
   message: ParsedInbound;
+  /**
+   * CTWA ad referral for THIS inbound, when the customer arrived via a
+   * Click-to-WhatsApp ad. Consumed only when this dispatch STARTS a new
+   * run — seeded into `flow_runs.vars` as `ctwa_*`. An already-active
+   * run keeps the vars captured at its own start (a later ad tap
+   * mid-conversation doesn't rewrite them). Absent for organic inbound.
+   */
+  referral?: CtwaReferral;
 }
 
 export interface DispatchInboundResult {

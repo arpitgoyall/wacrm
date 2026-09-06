@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { CTWA_VAR_KEYS } from '@/lib/flows/types';
 
 // ============================================================
 // Node-type union — single source of truth for every place the UI
@@ -303,6 +304,35 @@ export function truncate(s: string, max = 80): string {
   const clean = s.replace(/\s+/g, ' ').trim();
   if (clean.length <= max) return clean;
   return clean.slice(0, max - 1) + '…';
+}
+
+/**
+ * The `flow_runs.vars` keys a `condition` node (subject = "var") or a
+ * `{{vars.X}}` interpolation can reference at runtime — the source for
+ * the builder's suggestion `<datalist>`:
+ *
+ *   - `ctwa_*` — seeded on run start from a Click-to-WhatsApp ad
+ *     referral (CTWA_VAR_KEYS / `ctwaReferralVars` in the engine).
+ *   - every `var_key` an upstream `collect_input` / `send_buttons` /
+ *     `send_list` node captures.
+ *
+ * Deduped; CTWA keys first in their fixed order, then captured keys in
+ * node order. Purely advisory — the field stays free-text, so a key we
+ * didn't predict can still be typed in.
+ */
+export function flowVarSuggestions(allNodes: BuilderNode[]): string[] {
+  const captured: string[] = [];
+  for (const node of allNodes) {
+    if (
+      node.node_type === 'collect_input' ||
+      node.node_type === 'send_buttons' ||
+      node.node_type === 'send_list'
+    ) {
+      const key = node.config.var_key;
+      if (typeof key === 'string' && key.trim()) captured.push(key.trim());
+    }
+  }
+  return [...new Set<string>([...CTWA_VAR_KEYS, ...captured])];
 }
 
 export function summarizeNode(

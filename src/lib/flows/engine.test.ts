@@ -7,6 +7,7 @@ import {
   isSuspending,
   isTerminal,
   evaluateConditionPredicate,
+  ctwaReferralVars,
 } from "./engine";
 
 describe("matchReplyId", () => {
@@ -337,5 +338,42 @@ describe("evaluateConditionPredicate", () => {
         configValue: "anything",
       }),
     ).toBe(false);
+  });
+});
+
+describe("ctwaReferralVars", () => {
+  it("returns {} for a missing referral", () => {
+    expect(ctwaReferralVars(undefined)).toEqual({});
+  });
+
+  it("maps every populated field to its ctwa_ key", () => {
+    expect(
+      ctwaReferralVars({
+        source_id: "120210002222",
+        source_type: "ad",
+        source_url: "https://fb.me/abc",
+        headline: "Diwali Offer - South",
+        body: "Flat 40% off",
+        media_type: "image",
+        image_url: "https://cdn/img.jpg",
+        video_url: "",
+        ctwa_clid: "AbC123",
+      }),
+    ).toEqual({
+      ctwa_source_id: "120210002222",
+      ctwa_source_type: "ad",
+      ctwa_source_url: "https://fb.me/abc",
+      ctwa_headline: "Diwali Offer - South",
+      ctwa_body: "Flat 40% off",
+      ctwa_media_type: "image",
+      ctwa_clid: "AbC123",
+    });
+  });
+
+  it("omits empty / missing fields so `absent` can detect an organic inbound", () => {
+    expect(ctwaReferralVars({ source_id: "", headline: undefined })).toEqual({});
+    expect(ctwaReferralVars({ source_id: "120210001111" })).toEqual({
+      ctwa_source_id: "120210001111",
+    });
   });
 });
