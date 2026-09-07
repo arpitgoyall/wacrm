@@ -52,6 +52,7 @@ import {
   type FlowNodeRow,
   type FlowRow,
   type FlowRunRow,
+  type HandoffNodeConfig,
   type ParsedInbound,
   type SendButtonsNodeConfig,
   type SendListNodeConfig,
@@ -571,12 +572,15 @@ async function executeHandoff(
   run: FlowRunRow,
   node: FlowNodeRow,
 ): Promise<void> {
-  const cfg = node.config as { assign_to?: string; note?: string };
+  const cfg = node.config as unknown as HandoffNodeConfig;
+  const agentId = await resolveHandoffAgent(db, run, cfg);
   const convUpdate: Record<string, unknown> = {
     status: "pending",
     updated_at: new Date().toISOString(),
   };
-  if (cfg.assign_to) convUpdate.assigned_agent_id = cfg.assign_to;
+  // Setting assigned_agent_id fires the `on_conversation_assigned` DB
+  // trigger (migration 027) → notification row for the agent.
+  if (agentId) convUpdate.assigned_agent_id = agentId;
   if (run.conversation_id) {
     await db
       .from("conversations")
@@ -584,10 +588,60 @@ async function executeHandoff(
       .eq("id", run.conversation_id);
   }
   await logEvent(db, run.id, "handoff", node.node_key, {
-    note: cfg.note ?? null,
-    assigned_to: cfg.assign_to ?? null,
+    note: cfg.note ? interpolateVars(cfg.note, run.vars) : null,
+    mode: cfg.mode ?? (cfg.assign_to ? "specific" : "unassigned"),
+    assigned_to: agentId ?? null,
   });
   await endRun(db, run.id, "handed_off", "handoff_node");
+}
+
+/**
+ * Pick the agent a `handoff` node assigns to. Mirrors the automations
+ * engine's `resolveAssignmentAgent`:
+ *   - `unassigned` → nobody (shared pending queue).
+ *   - `specific`   → the configured agent (or legacy `assign_to`).
+ *   - `round_robin`→ rotate across the pool (or every account agent
+ *     when the pool is empty) via the per-(flow, pool) cursor.
+ * Returns an auth user_id, or undefined.
+ */
+async function resolveHandoffAgent(
+  db: AdminClient,
+  run: FlowRunRow,
+  cfg: HandoffNodeConfig,
+): Promise<string | undefined> {
+  const mode = cfg.mode ?? (cfg.assign_to ? "specific" : "unassigned");
+  if (mode === "unassigned") return undefined;
+  if (mode === "specific") return cfg.agent_id || cfg.assign_to || undefined;
+
+  // round_robin
+  const pool = Array.isArray(cfg.agent_ids)
+    ? cfg.agent_ids.filter((id): id is string => Boolean(id))
+    : [];
+  let query = db
+    .from("profiles")
+    .select("user_id")
+    .eq("account_id", run.account_id)
+    .eq("account_role", "agent")
+    .order("created_at", { ascending: true });
+  if (pool.length > 0) query = query.in("user_id", pool);
+  const { data: profiles } = await query;
+  if (!profiles || profiles.length === 0) return undefined;
+
+  // Namespaced by node key so two handoff nodes in one flow rotate
+  // independently; by sorted pool so the same pool shares a cursor.
+  const poolKey = `${run.current_node_key ?? "handoff"}:${
+    pool.length > 0 ? [...pool].sort().join(",") : "*"
+  }`;
+  const { data: index, error } = await db.rpc("next_flow_round_robin_index", {
+    p_flow_id: run.flow_id,
+    p_pool_key: poolKey,
+    p_pool_size: profiles.length,
+  });
+  if (error || typeof index !== "number") {
+    console.error("[flows] handoff round-robin cursor failed:", error);
+    return undefined;
+  }
+  return (profiles as { user_id: string }[])[index % profiles.length]?.user_id;
 }
 
 /**

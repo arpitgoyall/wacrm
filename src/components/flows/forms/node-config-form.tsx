@@ -37,6 +37,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -198,11 +199,10 @@ export function NodeConfigForm({
 
     case "handoff":
       return (
-        <TextRow
-          label={t("internalNote")}
-          value={(cfg as { note?: string }).note ?? ""}
-          onChange={(v) => onUpdateConfig({ note: v })}
-          rows={2}
+        <HandoffForm
+          cfg={cfg as HandoffCfg}
+          onUpdateConfig={onUpdateConfig}
+          t={t}
         />
       );
 
@@ -1083,6 +1083,204 @@ function useUserTags(): {
     };
   }, [attempt]);
   return { tags, status, retry: () => setAttempt((a) => a + 1) };
+}
+
+// ============================================================
+// handoff
+// ============================================================
+
+type HandoffMode = "unassigned" | "specific" | "round_robin";
+
+interface HandoffCfg {
+  note?: string;
+  mode?: HandoffMode;
+  agent_id?: string;
+  agent_ids?: string[];
+  /** @deprecated pre-mode fixed assignee. */
+  assign_to?: string;
+}
+
+interface AccountAgent {
+  user_id: string;
+  name: string;
+}
+
+function HandoffForm({
+  cfg,
+  onUpdateConfig,
+  t,
+}: {
+  cfg: HandoffCfg;
+  onUpdateConfig: (patch: Record<string, unknown>) => void;
+  t: ReturnType<typeof useTranslations>;
+}) {
+  const { agents, status } = useAccountAgents();
+  // Legacy `assign_to` (no `mode`) reads as a specific assignment.
+  const mode: HandoffMode = cfg.mode ?? (cfg.assign_to ? "specific" : "unassigned");
+  const specificId = cfg.agent_id ?? cfg.assign_to ?? "";
+  const pool = Array.isArray(cfg.agent_ids) ? cfg.agent_ids : [];
+
+  return (
+    <>
+      <TextRow
+        label={t("internalNote")}
+        value={cfg.note ?? ""}
+        onChange={(v) => onUpdateConfig({ note: v })}
+        rows={2}
+      />
+
+      <div>
+        <label className="mb-1 block text-xs text-muted-foreground">
+          {t("handoffAssignLabel")}
+        </label>
+        <Select
+          value={mode}
+          onValueChange={(v) =>
+            onUpdateConfig({
+              mode: v as HandoffMode,
+              // Clear the fields that don't belong to the new mode so a
+              // stale id can't leak through.
+              agent_id: v === "specific" ? specificId : undefined,
+              agent_ids: v === "round_robin" ? pool : undefined,
+              assign_to: undefined,
+            })
+          }
+        >
+          <SelectTrigger className="bg-muted">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="unassigned">
+              {t("handoffModeUnassigned")}
+            </SelectItem>
+            <SelectItem value="specific">{t("handoffModeSpecific")}</SelectItem>
+            <SelectItem value="round_robin">
+              {t("handoffModeRoundRobin")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="mt-1 text-[10px] text-muted-foreground">
+          {t("handoffAssignHint")}
+        </p>
+      </div>
+
+      {mode === "specific" &&
+        (status === "ready" && agents.length === 0 ? (
+          <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            {t("handoffNoAgents")}
+          </p>
+        ) : (
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              {t("handoffAgentLabel")}
+            </label>
+            <Select
+              value={specificId}
+              onValueChange={(v) => onUpdateConfig({ agent_id: v })}
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue placeholder={t("handoffPickAgent")} />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((a) => (
+                  <SelectItem key={a.user_id} value={a.user_id}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+                {specificId &&
+                  !agents.some((a) => a.user_id === specificId) && (
+                    <SelectItem value={specificId}>{specificId}</SelectItem>
+                  )}
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+
+      {mode === "round_robin" && (
+        <div>
+          <label className="mb-1 block text-xs text-muted-foreground">
+            {t("handoffPoolLabel")}
+          </label>
+          {status === "ready" && agents.length === 0 ? (
+            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {t("handoffNoAgents")}
+            </p>
+          ) : (
+            <>
+              <div className="space-y-1 rounded-md border border-border bg-muted p-2">
+                {agents.map((a) => {
+                  const checked = pool.includes(a.user_id);
+                  return (
+                    <label
+                      key={a.user_id}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-background"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(next) =>
+                          onUpdateConfig({
+                            agent_ids: next
+                              ? [...pool, a.user_id]
+                              : pool.filter((id) => id !== a.user_id),
+                          })
+                        }
+                      />
+                      <span>{a.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                {t("handoffPoolHint")}
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Account members with the `agent` role, for the handoff picker. */
+function useAccountAgents(): {
+  agents: AccountAgent[];
+  status: "loading" | "ready" | "error";
+} {
+  const [agents, setAgents] = useState<AccountAgent[]>([]);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/account/members");
+        if (!res.ok) throw new Error(`members fetch failed: ${res.status}`);
+        const json = (await res.json()) as {
+          members?: Array<{
+            user_id: string;
+            full_name?: string | null;
+            email?: string | null;
+            role?: string;
+          }>;
+        };
+        if (cancelled) return;
+        setAgents(
+          (json.members ?? [])
+            .filter((m) => m.role === "agent")
+            .map((m) => ({
+              user_id: m.user_id,
+              name: m.full_name || m.email || m.user_id,
+            })),
+        );
+        setStatus("ready");
+      } catch {
+        if (!cancelled) setStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return { agents, status };
 }
 
 // ============================================================

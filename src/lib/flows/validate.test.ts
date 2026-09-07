@@ -592,6 +592,38 @@ describe("validateFlowForActivation — send_media", () => {
   });
 });
 
+describe("validateFlowForActivation — handoff assignment mode", () => {
+  const flowWith = (handoffConfig: Record<string, unknown>) => ({
+    flow: { ...validFlow, entry_node_id: "s" },
+    nodes: [
+      { node_key: "s", node_type: "start", config: { next_node_key: "h" } },
+      { node_key: "h", node_type: "handoff", config: handoffConfig },
+    ],
+  });
+
+  it("passes for unassigned / round-robin / a specific agent", () => {
+    for (const cfg of [
+      {},
+      { mode: "unassigned" },
+      { mode: "round_robin" },
+      { mode: "round_robin", agent_ids: ["u1", "u2"] },
+      { mode: "specific", agent_id: "u1" },
+      { assign_to: "u1" },
+    ]) {
+      const { flow, nodes } = flowWith(cfg);
+      expect(validateFlowForActivation(flow, nodes)).toEqual([]);
+    }
+  });
+
+  it("flags 'specific' mode with no agent chosen", () => {
+    const { flow, nodes } = flowWith({ mode: "specific" });
+    const issues = validateFlowForActivation(flow, nodes);
+    expect(
+      issues.some((i) => i.node_key === "h" && i.field === "agent_id"),
+    ).toBe(true);
+  });
+});
+
 describe("reachableFromEntry", () => {
   it("walks the graph from the entry", () => {
     const set = reachableFromEntry("start", validNodes);

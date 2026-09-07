@@ -764,10 +764,33 @@ function validateNode(
       break;
     }
 
-    case "handoff":
+    case "handoff": {
+      // Terminal node — no outgoing edges. Only the assignment mode
+      // needs a sanity check.
+      const cfg = node.config as {
+        mode?: "unassigned" | "specific" | "round_robin";
+        agent_id?: string;
+        assign_to?: string;
+      };
+      if (
+        cfg.mode === "specific" &&
+        !cfg.agent_id?.trim() &&
+        !cfg.assign_to?.trim()
+      ) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "agent_id",
+          message: 'Handoff mode "specific agent" needs an agent selected.',
+        });
+      }
+      break;
+    }
+
     case "end":
-      // Terminal nodes have no outgoing edges; nothing to validate
-      // beyond their existence.
+      // Terminal node — no outgoing edges; nothing to validate beyond
+      // its existence.
       break;
 
     default:

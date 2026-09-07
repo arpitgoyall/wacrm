@@ -110,11 +110,27 @@ export interface SendMediaNodeConfig {
 }
 
 export interface HandoffNodeConfig {
-  /** Optional internal note written to flow_run_events.payload.note. */
+  /** Optional internal note written to flow_run_events.payload.note.
+   *  Supports `{{vars.x}}` interpolation. */
   note?: string;
   /**
-   * Optional agent user_id to assign on the conversation when this
-   * node fires. Leave unset to flip the status without assignment.
+   * How the conversation is assigned when the run reaches this node.
+   * All modes flip `conversations.status` to `pending`; picking an
+   * agent additionally sets `assigned_agent_id`, which fires the
+   * `on_conversation_assigned` DB trigger (agent notification).
+   *   - `unassigned` (default): status only, shared queue.
+   *   - `specific`: assign `agent_id`.
+   *   - `round_robin`: rotate across `agent_ids` (or every account
+   *     agent when the pool is empty).
+   */
+  mode?: 'unassigned' | 'specific' | 'round_robin';
+  /** Agent auth user_id for `mode: 'specific'`. */
+  agent_id?: string;
+  /** Agent auth user_ids for `mode: 'round_robin'`. Empty = any agent. */
+  agent_ids?: string[];
+  /**
+   * @deprecated pre-`mode` field — a fixed agent user_id. Still
+   * honoured by the runner as `mode: 'specific'` with this id.
    */
   assign_to?: string;
 }
