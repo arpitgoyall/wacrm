@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client';
 import { sendPushToUser } from '@/lib/push/send';
 import {
   notificationToPushPayload,
+  type ContactForPush,
   type NotificationRowForPush,
 } from '@/lib/push/payload';
 
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
 
   const { data: n, error } = await supabaseAdmin()
     .from('notifications')
-    .select('id, user_id, type, title, body, conversation_id')
+    .select('id, user_id, type, title, body, conversation_id, contact_id')
     .eq('id', id)
     .maybeSingle();
   if (error) {
@@ -50,9 +51,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, skipped: 'not_found' });
   }
 
+  // Pull the contact's name + avatar so a message alert can render like
+  // the WhatsApp app (chat name as title, avatar as icon).
+  let contact: ContactForPush | null = null;
+  if (n.contact_id) {
+    const { data: c } = await supabaseAdmin()
+      .from('contacts')
+      .select('name, avatar_url')
+      .eq('id', n.contact_id)
+      .maybeSingle();
+    contact = (c as ContactForPush | null) ?? null;
+  }
+
   const result = await sendPushToUser(
     n.user_id as string,
-    notificationToPushPayload(n as unknown as NotificationRowForPush),
+    notificationToPushPayload(
+      n as unknown as NotificationRowForPush,
+      contact,
+    ),
   );
   return NextResponse.json({ ok: true, ...result });
 }

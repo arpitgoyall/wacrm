@@ -28,14 +28,29 @@ self.addEventListener("push", (event) => {
   }
 
   const title = data.title || "New notification";
+  const isMessage = data.type === "new_message" && !!data.conversationId;
+
   const options = {
     body: data.body || "",
-    icon: "/icon-192.png",
+    icon: data.icon || "/icon-192.png",
     badge: "/icon-192.png",
     tag: data.tag || "wacrm",
     renotify: true,
     vibrate: [80, 40, 80],
-    data: { url: data.url || "/notifications" },
+    timestamp: Date.now(),
+    data: {
+      url: data.url || "/notifications",
+      conversationId: data.conversationId || null,
+      type: data.type || null,
+    },
+    // WhatsApp-style inline actions. Android renders these; iOS ignores
+    // them harmlessly.
+    actions: isMessage
+      ? [
+          { action: "reply", type: "text", title: "Reply", placeholder: "Reply" },
+          { action: "mark-read", title: "Mark as read" },
+        ]
+      : [],
   };
 
   event.waitUntil(
@@ -54,20 +69,87 @@ self.addEventListener("push", (event) => {
 });
 
 self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
+  const notification = event.notification;
+  const data = notification.data || {};
+  const conversationId = data.conversationId;
+
+  // Inline "Reply" — send the typed text through the dashboard's own
+  // send endpoint (the SW request carries the session cookie).
+  if (event.action === "reply") {
+    const text = (event.reply || "").trim();
+    if (!text || !conversationId) {
+      notification.close();
+      return;
+    }
+    event.waitUntil(
+      fetch("/api/whatsapp/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          message_type: "text",
+          content_text: text,
+        }),
+      })
+        .then((res) => {
+          if (res.ok) {
+            notification.close();
+            return undefined;
+          }
+          return self.registration.showNotification("Couldn't send reply", {
+            body: "Open the app to try again.",
+            icon: "/icon-192.png",
+            badge: "/icon-192.png",
+            tag: notification.tag,
+          });
+        })
+        .catch(() =>
+          self.registration.showNotification("Couldn't send reply", {
+            body: "You appear to be offline.",
+            icon: "/icon-192.png",
+            badge: "/icon-192.png",
+            tag: notification.tag,
+          }),
+        ),
+    );
+    return;
+  }
+
+  // "Mark as read" — clear this chat's notification-centre entries
+  // without opening the app.
+  if (event.action === "mark-read") {
+    notification.close();
+    if (!conversationId) return;
+    event.waitUntil(
+      fetch("/api/notifications/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ conversation_id: conversationId }),
+      }).catch(() => undefined),
+    );
+    return;
+  }
+
+  // Body tap — open the conversation.
+  notification.close();
   const targetUrl = new URL(
-    event.notification.data?.url || "/inbox",
+    data.url || "/inbox",
     self.location.origin,
   ).href;
-
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      const existingClient = clients.find((client) => "focus" in client);
-      if (existingClient) {
-        return existingClient.navigate(targetUrl).then((client) => client?.focus());
-      }
-      return self.clients.openWindow(targetUrl);
-    }),
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        const existingClient = clients.find((client) => "focus" in client);
+        if (existingClient) {
+          return existingClient
+            .navigate(targetUrl)
+            .then((client) => client && client.focus());
+        }
+        return self.clients.openWindow(targetUrl);
+      }),
   );
 });
 
