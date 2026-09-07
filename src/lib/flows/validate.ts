@@ -606,23 +606,28 @@ function validateNode(
 
     case "condition": {
       const cfg = node.config as {
-        subject?: "var" | "tag" | "contact_field";
+        subject?: "var" | "tag" | "contact_field" | "last_message";
         subject_key?: string;
         operator?: "equals" | "contains" | "present" | "absent";
         value?: string;
         true_next?: string;
         false_next?: string;
       };
-      if (!cfg.subject || !["var", "tag", "contact_field"].includes(cfg.subject)) {
+      if (
+        !cfg.subject ||
+        !["var", "tag", "contact_field", "last_message"].includes(cfg.subject)
+      ) {
         issues.push({
           severity: "error",
           scope: "node",
           node_key: node.node_key,
           field: "subject",
-          message: "Condition needs a subject (var / tag / contact_field).",
+          message:
+            "Condition needs a subject (message / var / tag / contact_field).",
         });
       }
-      if (!cfg.subject_key?.trim()) {
+      // `last_message` is self-describing — no subject_key to fill in.
+      if (cfg.subject !== "last_message" && !cfg.subject_key?.trim()) {
         issues.push({
           severity: "error",
           scope: "node",

@@ -640,7 +640,7 @@ function SendListForm({
 // ============================================================
 
 interface ConditionCfg {
-  subject?: "var" | "tag" | "contact_field";
+  subject?: "var" | "tag" | "contact_field" | "last_message";
   subject_key?: string;
   operator?: "equals" | "contains" | "present" | "absent";
   value?: string;
@@ -694,6 +694,7 @@ function ConditionForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="last_message">{t("customerMessage")}</SelectItem>
               <SelectItem value="var">{t("capturedVariable")}</SelectItem>
               <SelectItem value="tag">{t("contactHasTag")}</SelectItem>
               <SelectItem value="contact_field">{t("contactField")}</SelectItem>
@@ -706,9 +707,15 @@ function ConditionForm({
               ? t("varName")
               : subject === "tag"
                 ? t("tagLabel")
-                : t("fieldLabel")}
+                : subject === "contact_field"
+                  ? t("fieldLabel")
+                  : t("subjectLabel")}
           </label>
-          {subject === "tag" ? (
+          {subject === "last_message" ? (
+            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {t("customerMessageHint")}
+            </p>
+          ) : subject === "tag" ? (
             tags.length > 0 ? (
             <Select
               value={cfg.subject_key ?? ""}

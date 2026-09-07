@@ -154,7 +154,11 @@ export type ConditionOperator =
   | "present"
   | "absent";
 
-export type ConditionSubject = "var" | "tag" | "contact_field";
+export type ConditionSubject =
+  | "var"
+  | "tag"
+  | "contact_field"
+  | "last_message";
 
 /**
  * Routes the run based on a predicate over the contact's tags,
@@ -167,6 +171,8 @@ export interface ConditionNodeConfig {
    * For `var`: the key in flow_runs.vars.
    * For `tag`: the tag UUID (matched against contact_tags).
    * For `contact_field`: one of 'name' | 'email' | 'phone' | 'company'.
+   * For `last_message`: unused — the subject is the customer's current
+   *   inbound text (see LAST_MESSAGE_VAR in the flows engine).
    */
   subject_key: string;
   operator: ConditionOperator;

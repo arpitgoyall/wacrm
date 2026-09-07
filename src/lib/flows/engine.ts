@@ -159,6 +159,35 @@ export function entryTriggerTexts(message: ParsedInbound): string[] {
   );
 }
 
+/**
+ * Reserved `flow_runs.vars` key holding the customer's current inbound
+ * — the typed text, or a tapped button/list option's visible title.
+ * Exposed to `condition` nodes (subject "last_message") and to
+ * `{{vars.last_message}}` interpolation.
+ *
+ * Seeded fresh on every dispatch (run start + each reply) and kept
+ * IN-MEMORY only: unlike a `collect_input` capture it is never written
+ * back to the DB by itself, so raw customer text isn't persisted just
+ * because a flow happens to have a condition node. It therefore always
+ * reflects the message being processed right now and does not survive
+ * to a later dispatch — which is the intended meaning of "last".
+ */
+export const LAST_MESSAGE_VAR = "last_message";
+
+/** The customer's inbound as a plain string (button/list → its title). */
+export function inboundText(message: ParsedInbound): string {
+  return message.kind === "text"
+    ? message.text
+    : message.reply_title || message.reply_id;
+}
+
+/** Mirror the current inbound onto `run.vars[last_message]` in memory. */
+function seedLastMessageVar(run: FlowRunRow, message: ParsedInbound): void {
+  const text = inboundText(message).trim();
+  if (!text) return;
+  run.vars = { ...(run.vars ?? {}), [LAST_MESSAGE_VAR]: text };
+}
+
 /** Nodes that advance to a next_node_key without waiting for input. */
 export function isAutoAdvancing(node_type: string): boolean {
   return (
@@ -578,7 +607,11 @@ async function evaluateConditionNode(
   cfg: ConditionNodeConfig,
 ): Promise<boolean> {
   let subjectValue: string | undefined;
-  if (cfg.subject === "var") {
+  if (cfg.subject === "last_message") {
+    // Reserved in-memory var — no subject_key needed.
+    const v = run.vars[LAST_MESSAGE_VAR];
+    subjectValue = typeof v === "string" && v.length > 0 ? v : undefined;
+  } else if (cfg.subject === "var") {
     const v = run.vars[cfg.subject_key];
     subjectValue = typeof v === "string" ? v : v === undefined ? undefined : String(v);
   } else if (cfg.subject === "tag") {
@@ -1051,6 +1084,10 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
+  // Expose this reply as {{vars.last_message}} / condition subject
+  // "last_message" for the advance triggered below. In-memory only.
+  seedLastMessageVar(run, message);
+
   // Two ways a reply can advance:
   //   1. Interactive button/list tap on a send_buttons/send_list node.
   //   2. Text reply on a collect_input node — capture into vars.
@@ -1251,6 +1288,10 @@ async function startNewRun(
   if (hasSeededVars && (!run.vars || Object.keys(run.vars).length === 0)) {
     run.vars = seededVars;
   }
+  // Expose the first inbound as {{vars.last_message}} / condition
+  // subject "last_message" for this run's opening advance. In-memory
+  // only — see LAST_MESSAGE_VAR.
+  seedLastMessageVar(run, input.message);
   await logEvent(db, run.id, "started", flow.entry_node_id, {
     flow_id: flow.id,
     trigger_type: flow.trigger_type,

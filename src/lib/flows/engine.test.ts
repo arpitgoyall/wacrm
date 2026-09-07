@@ -8,6 +8,7 @@ import {
   isTerminal,
   evaluateConditionPredicate,
   ctwaReferralVars,
+  inboundText,
 } from "./engine";
 
 describe("matchReplyId", () => {
@@ -183,6 +184,36 @@ describe("matchesKeywordTrigger", () => {
     const cfg = { keywords: ["", "support", ""] };
     expect(matchesKeywordTrigger("support center", cfg)).toBe(true);
     expect(matchesKeywordTrigger("nope", cfg)).toBe(false);
+  });
+});
+
+describe("inboundText", () => {
+  it("returns the typed body for a text message", () => {
+    expect(
+      inboundText({ kind: "text", text: "I want pricing", meta_message_id: "m1" }),
+    ).toBe("I want pricing");
+  });
+
+  it("returns the tapped option's visible title for an interactive reply", () => {
+    expect(
+      inboundText({
+        kind: "interactive_reply",
+        reply_id: "btn_demo",
+        reply_title: "Book a demo",
+        meta_message_id: "m2",
+      }),
+    ).toBe("Book a demo");
+  });
+
+  it("falls back to reply_id when the title is empty", () => {
+    expect(
+      inboundText({
+        kind: "interactive_reply",
+        reply_id: "btn_demo",
+        reply_title: "",
+        meta_message_id: "m3",
+      }),
+    ).toBe("btn_demo");
   });
 });
 
