@@ -1591,6 +1591,11 @@
       "step4_3": "Paste the <strong class=\"text-foreground\">Webhook Callback URL</strong> from above",
       "step4_4": "Enter the same <strong class=\"text-foreground\">Verify Token</strong> you set here",
       "step4_5": "Subscribe to \"messages\" webhook field",
+      "step5": "Set Up Conversions API (optional)",
+      "step5_1": "Go to Events Manager > Data Sources and select or create a dataset",
+      "step5_2": "Copy the <strong class=\"text-foreground\">Dataset ID</strong> and paste it as the Conversions API dataset ID above",
+      "step5_3": "In the dataset's Settings > Conversions API, generate a <strong class=\"text-foreground\">system-user access token</strong> linked to this WABA",
+      "step5_4": "Paste the token as the Conversions API access token above — this lets a \"Send Meta Conversion\" automation step report closed deals back to Meta for Click-to-WhatsApp ad attribution",
       "metaDocs": "Meta WhatsApp API Documentation"
     },
     "sections": {

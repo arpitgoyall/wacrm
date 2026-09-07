@@ -58,6 +58,7 @@ export function WhatsAppConfig() {
   const [testing, setTesting] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [showToken, setShowToken] = useState(false);
+  const [showCapiToken, setShowCapiToken] = useState(false);
   const [config, setConfig] = useState<WhatsAppConfigType | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('unknown');
   const [resetReason, setResetReason] = useState<ResetReason>(null);
@@ -74,6 +75,10 @@ export function WhatsAppConfig() {
   const [wabaId, setWabaId] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [verifyToken, setVerifyToken] = useState('');
+  // Write-only like access_token/ctwa_capi_token: the row read never
+  // decrypts it back to the client, `verifyTokenSet` just reflects
+  // whether one is already stored so the field doesn't look empty/lost.
+  const [verifyTokenSet, setVerifyTokenSet] = useState(false);
   const [pin, setPin] = useState('');
   const [tokenEdited, setTokenEdited] = useState(false);
   // Conversions API (CTWA). The token is write-only from the client:
@@ -143,6 +148,7 @@ export function WhatsAppConfig() {
         setWabaId(data.waba_id || '');
         setAccessToken(MASKED_TOKEN);
         setVerifyToken('');
+        setVerifyTokenSet(Boolean(data.verify_token));
         setPin('');
         setTokenEdited(false);
         setCtwaDatasetId(data.ctwa_dataset_id || '');
@@ -157,6 +163,7 @@ export function WhatsAppConfig() {
         setWabaId('');
         setAccessToken('');
         setVerifyToken('');
+        setVerifyTokenSet(false);
         setPin('');
         setTokenEdited(false);
         setCtwaDatasetId('');
@@ -413,6 +420,7 @@ export function WhatsAppConfig() {
       setWabaId('');
       setAccessToken('');
       setVerifyToken('');
+      setVerifyTokenSet(false);
       setTokenEdited(false);
       setConnectionStatus('disconnected');
       setResetReason(null);
@@ -679,11 +687,18 @@ export function WhatsAppConfig() {
             <div className="space-y-2">
               <Label className="text-muted-foreground">{t('webhookVerifyToken')}</Label>
               <Input
-                placeholder={t('webhookVerifyTokenPlaceholder')}
+                placeholder={
+                  verifyTokenSet ? t('tokenHidden') : t('webhookVerifyTokenPlaceholder')
+                }
                 value={verifyToken}
                 onChange={(e) => setVerifyToken(e.target.value)}
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
               />
+              {verifyTokenSet && !verifyToken && (
+                <p className="text-xs text-muted-foreground">
+                  {t('tokenHidden')}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 {t('webhookVerifyTokenHint')}
               </p>
@@ -722,15 +737,24 @@ export function WhatsAppConfig() {
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
               />
               <Label className="text-muted-foreground">{t('ctwaCapiToken')}</Label>
-              <Input
-                type="password"
-                placeholder={
-                  capiTokenSet ? t('tokenHidden') : t('ctwaCapiTokenPlaceholder')
-                }
-                value={ctwaCapiToken}
-                onChange={(e) => setCtwaCapiToken(e.target.value)}
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
-              />
+              <div className="relative">
+                <Input
+                  type={showCapiToken ? 'text' : 'password'}
+                  placeholder={
+                    capiTokenSet ? t('tokenHidden') : t('ctwaCapiTokenPlaceholder')
+                  }
+                  value={ctwaCapiToken}
+                  onChange={(e) => setCtwaCapiToken(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCapiToken(!showCapiToken)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showCapiToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 {t('ctwaHint')}
               </p>
@@ -937,6 +961,23 @@ export function WhatsAppConfig() {
                     <li dangerouslySetInnerHTML={{ __html: t.raw('step4_3') }} />
                     <li dangerouslySetInnerHTML={{ __html: t.raw('step4_4') }} />
                     <li>{t('step4_5')}</li>
+                  </ol>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem className="border-border">
+                <AccordionTrigger className="text-muted-foreground hover:text-foreground hover:no-underline">
+                  <span className="flex items-center gap-2">
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">5</span>
+                    {t('step5')}
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="text-muted-foreground">
+                  <ol className="list-decimal list-inside space-y-1 text-sm">
+                    <li>{t('step5_1')}</li>
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step5_2') }} />
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step5_3') }} />
+                    <li dangerouslySetInnerHTML={{ __html: t.raw('step5_4') }} />
                   </ol>
                 </AccordionContent>
               </AccordionItem>

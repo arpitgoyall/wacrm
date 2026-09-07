@@ -1591,6 +1591,11 @@
       "step4_3": "위의 <strong class=\"text-foreground\">웹훅 콜백 URL</strong>을 붙여넣기",
       "step4_4": "여기서 설정한 것과 동일한 <strong class=\"text-foreground\">인증 토큰</strong>을 입력",
       "step4_5": "\"messages\" 웹훅 필드를 구독",
+      "step5": "전환 API 설정 (선택)",
+      "step5_1": "Events Manager > Data Sources로 이동해 데이터셋을 선택하거나 생성",
+      "step5_2": "<strong class=\"text-foreground\">데이터셋 ID</strong>를 복사해 위의 전환 API 데이터셋 ID에 붙여넣기",
+      "step5_3": "데이터셋의 Settings > Conversions API에서 이 WABA에 연결된 <strong class=\"text-foreground\">시스템 사용자 액세스 토큰</strong> 생성",
+      "step5_4": "토큰을 위의 전환 API 액세스 토큰에 붙여넣기 — \"Meta 전환 보내기\" 자동화 단계가 Click-to-WhatsApp 광고 기여도 분석을 위해 성사된 딜을 Meta로 보고할 수 있습니다",
       "metaDocs": "Meta WhatsApp API 문서"
     },
     "sections": {
