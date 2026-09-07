@@ -594,6 +594,74 @@ async function handleReaction(
   }
 }
 
+/**
+ * Upsert the CTWA ad registry row (migration 051) for an inbound that
+ * carried an ad referral. Keyed by (account_id, source_id) where
+ * `source_id` is Meta's ad id. Refreshes `last_seen_at` and fills in
+ * whatever creative context Meta attached, WITHOUT disturbing the
+ * user-set `label` or the original `first_seen_at` (so a plain
+ * whole-row upsert is deliberately not used here).
+ *
+ * Best-effort: a failure must not break inbound processing — it logs
+ * and returns.
+ */
+async function recordCtwaAd(
+  accountId: string,
+  referral: NonNullable<WhatsAppMessage['referral']>,
+) {
+  const sourceId = referral.source_id
+  if (!sourceId) return
+
+  try {
+    const db = supabaseAdmin()
+    const nowIso = new Date().toISOString()
+
+    // Only overwrite a creative field when this referral actually
+    // carries a value — Meta omits what the ad doesn't have, and a
+    // later inbound must not blank what an earlier one filled in.
+    const patch: Record<string, unknown> = { last_seen_at: nowIso }
+    if (referral.headline) patch.headline = referral.headline
+    if (referral.body) patch.body = referral.body
+    if (referral.source_url) patch.source_url = referral.source_url
+    if (referral.source_type) patch.source_type = referral.source_type
+
+    const { data: updated, error: updateErr } = await db
+      .from('ctwa_ads')
+      .update(patch)
+      .eq('account_id', accountId)
+      .eq('source_id', sourceId)
+      .select('id')
+
+    if (updateErr) {
+      console.error('[webhook] ctwa_ads update failed:', updateErr.message)
+      return
+    }
+    if (updated && updated.length > 0) return
+
+    // No existing row — create it. ignoreDuplicates turns a concurrent
+    // insert (two ad taps landing at once) into a no-op rather than a
+    // unique-violation error.
+    const { error: insertErr } = await db.from('ctwa_ads').upsert(
+      {
+        account_id: accountId,
+        source_id: sourceId,
+        headline: referral.headline ?? null,
+        body: referral.body ?? null,
+        source_url: referral.source_url ?? null,
+        source_type: referral.source_type ?? null,
+        first_seen_at: nowIso,
+        last_seen_at: nowIso,
+      },
+      { onConflict: 'account_id,source_id', ignoreDuplicates: true },
+    )
+    if (insertErr) {
+      console.error('[webhook] ctwa_ads insert failed:', insertErr.message)
+    }
+  } catch (err) {
+    console.error('[webhook] recordCtwaAd threw:', err)
+  }
+}
+
 async function processMessage(
   message: WhatsAppMessage,
   contact: { profile: { name: string }; wa_id: string },
@@ -638,6 +706,14 @@ async function processMessage(
       })
       .eq('id', contactRecord.id)
       .eq('account_id', accountId)
+  }
+
+  // Register / refresh this ad in the CTWA ad registry (migration 051)
+  // so the Ads dashboard can report a per-ad funnel without a Meta
+  // Marketing API call. Keyed on the ad id (`source_id`); independent
+  // of the contact write above and best-effort — see the helper.
+  if (message.referral?.source_id) {
+    await recordCtwaAd(accountId, message.referral)
   }
 
   // Find or create conversation

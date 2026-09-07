@@ -39,7 +39,8 @@
     "defaultAvatar": "아바타",
     "menuProfile": "프로필",
     "menuSettings": "설정",
-    "menuSignOut": "로그아웃"
+    "menuSignOut": "로그아웃",
+    "ads": "광고"
   },
   "Header": {
     "dashboard": "대시보드",
@@ -1810,6 +1811,44 @@
       "reindex": "재색인",
       "reindexTooltip": "모든 문서를 다시 임베딩합니다 (예: 임베딩 키 추가 후)",
       "loading": "불러오는 중…"
+    }
+  },
+  "Ads": {
+    "title": "광고",
+    "subtitle": "리드를 유입시킨 모든 클릭 투 WhatsApp(CTWA) 광고와 거래·매출 전환 현황입니다.",
+    "error": "광고 성과를 불러오지 못했습니다.",
+    "retry": "다시 시도",
+    "attributionNote": "리드는 연락처가 마지막으로 누른 광고에 귀속됩니다. 거래는 생성될 당시의 광고를 유지합니다.",
+    "openAd": "Facebook에서 광고 열기",
+    "summary": {
+      "ads": "광고",
+      "leads": "리드",
+      "deals": "거래",
+      "won": "성사",
+      "revenue": "매출",
+      "closeRate": "성사율"
+    },
+    "table": {
+      "ad": "광고",
+      "leads": "리드",
+      "deals": "거래",
+      "won": "성사",
+      "lost": "실패",
+      "revenue": "매출",
+      "closeRate": "성사율",
+      "revPerLead": "리드당 매출"
+    },
+    "empty": {
+      "title": "아직 CTWA 광고 리드가 없습니다",
+      "desc": "클릭 투 WhatsApp 광고를 통해 메시지를 보내면 해당 광고가 리드 및 매출 수치와 함께 여기에 표시됩니다."
+    },
+    "rename": {
+      "label": "광고 이름 변경",
+      "placeholder": "이 광고의 이름을 지정하세요",
+      "save": "이름 저장",
+      "cancel": "취소",
+      "saved": "광고 이름이 변경되었습니다",
+      "error": "광고 이름을 변경하지 못했습니다"
     }
   }
 }

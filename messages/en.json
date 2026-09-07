@@ -39,7 +39,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "ads": "Ads"
   },
   "Header": {
     "dashboard": "Dashboard",
@@ -1810,6 +1811,44 @@
       "reindex": "Reindex",
       "reindexTooltip": "Re-embed all documents (e.g. after adding an embeddings key)",
       "loading": "Loading…"
+    }
+  },
+  "Ads": {
+    "title": "Ads",
+    "subtitle": "Every Click-to-WhatsApp ad you've received leads from, and how they convert into deals and revenue.",
+    "error": "Couldn't load ad performance.",
+    "retry": "Retry",
+    "attributionNote": "Leads are attributed to the last ad a contact tapped. Deals keep the ad they were created under.",
+    "openAd": "Open ad on Facebook",
+    "summary": {
+      "ads": "Ads",
+      "leads": "Leads",
+      "deals": "Deals",
+      "won": "Won",
+      "revenue": "Revenue",
+      "closeRate": "Close rate"
+    },
+    "table": {
+      "ad": "Ad",
+      "leads": "Leads",
+      "deals": "Deals",
+      "won": "Won",
+      "lost": "Lost",
+      "revenue": "Revenue",
+      "closeRate": "Close rate",
+      "revPerLead": "Rev / lead"
+    },
+    "empty": {
+      "title": "No CTWA ad leads yet",
+      "desc": "When someone messages you from a Click-to-WhatsApp ad, that ad shows up here with its lead and sales numbers."
+    },
+    "rename": {
+      "label": "Rename ad",
+      "placeholder": "Name this ad",
+      "save": "Save name",
+      "cancel": "Cancel",
+      "saved": "Ad renamed",
+      "error": "Couldn't rename ad"
     }
   }
 }
