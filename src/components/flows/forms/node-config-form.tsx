@@ -639,13 +639,56 @@ function SendListForm({
 // condition
 // ============================================================
 
+type ConditionOp = "equals" | "contains" | "present" | "absent";
+
+interface ConditionRuleCfg {
+  id: string;
+  operator?: ConditionOp;
+  value?: string;
+  next?: string;
+}
+
 interface ConditionCfg {
   subject?: "var" | "tag" | "contact_field" | "last_message";
   subject_key?: string;
-  operator?: "equals" | "contains" | "present" | "absent";
+  /** Multi-branch form (if / else-if / … / otherwise). */
+  rules?: ConditionRuleCfg[];
+  else_next?: string;
+  /** @deprecated binary form — read into `rules` by `readConditionRules`. */
+  operator?: ConditionOp;
   value?: string;
   true_next?: string;
   false_next?: string;
+}
+
+function newRuleId(): string {
+  return `rule_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
+ * The rules the form should show. Uses `cfg.rules` when present;
+ * otherwise synthesizes a single rule + otherwise-target from the
+ * legacy binary shape so pre-existing condition nodes open in the same
+ * editor. Pure — the node isn't rewritten until the user edits it.
+ */
+function readConditionRules(cfg: ConditionCfg): {
+  rules: ConditionRuleCfg[];
+  elseNext: string;
+} {
+  if (Array.isArray(cfg.rules) && cfg.rules.length > 0) {
+    return { rules: cfg.rules, elseNext: cfg.else_next ?? "" };
+  }
+  return {
+    rules: [
+      {
+        id: "rule_1",
+        operator: cfg.operator ?? "equals",
+        value: cfg.value ?? "",
+        next: cfg.true_next ?? "",
+      },
+    ],
+    elseNext: cfg.false_next ?? "",
+  };
 }
 
 interface UserTag {
@@ -670,8 +713,34 @@ function ConditionForm({
   const { tags, status: tagsStatus, retry: retryTags } = useUserTags();
 
   const subject = cfg.subject ?? "var";
-  const operator = cfg.operator ?? "equals";
-  const showValue = operator === "equals" || operator === "contains";
+  const { rules, elseNext } = readConditionRules(cfg);
+
+  // Every write canonicalises the node to the multi-branch shape and
+  // drops the legacy binary keys.
+  const commit = (nextRules: ConditionRuleCfg[], nextElse: string) =>
+    onUpdateConfig({
+      rules: nextRules,
+      else_next: nextElse,
+      operator: undefined,
+      value: undefined,
+      true_next: undefined,
+      false_next: undefined,
+    });
+  const updateRule = (i: number, patch: Partial<ConditionRuleCfg>) =>
+    commit(
+      rules.map((r, idx) => (idx === i ? { ...r, ...patch } : r)),
+      elseNext,
+    );
+  const addRule = () =>
+    commit(
+      [...rules, { id: newRuleId(), operator: "equals", value: "", next: "" }],
+      elseNext,
+    );
+  const removeRule = (i: number) =>
+    commit(
+      rules.filter((_, idx) => idx !== i),
+      elseNext,
+    );
 
   // Native suggestion list for the free-text var-name box: the ctwa_*
   // ad-referral keys plus any var_key captured upstream in this flow.
@@ -786,57 +855,95 @@ function ConditionForm({
         </div>
       </div>
 
-      <div
-        className={cn(
-          "grid grid-cols-1 gap-3",
-          showValue ? "md:grid-cols-2" : "",
-        )}
-      >
-        <div>
-          <label className="mb-1 block text-xs text-muted-foreground">{t("operatorLabel")}</label>
-          <Select
-            value={operator}
-            onValueChange={(v) =>
-              onUpdateConfig({ operator: v as ConditionCfg["operator"] })
-            }
-          >
-            <SelectTrigger className="bg-muted">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="present">{t("isPresent")}</SelectItem>
-              <SelectItem value="absent">{t("isAbsent")}</SelectItem>
-              <SelectItem value="equals">{t("equals")}</SelectItem>
-              <SelectItem value="contains">{t("contains")}</SelectItem>
-            </SelectContent>
-          </Select>
+      <div>
+        <label className="mb-2 block text-xs text-muted-foreground">
+          {t("branchesHelp")}
+        </label>
+        <div className="flex flex-col gap-3">
+          {rules.map((rule, i) => {
+            const op = rule.operator ?? "equals";
+            const withValue = op === "equals" || op === "contains";
+            return (
+              <div
+                key={rule.id}
+                className="rounded-md border border-border bg-muted/40 p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-14 shrink-0 text-xs font-medium text-muted-foreground">
+                    {i === 0 ? t("branchIf") : t("branchElseIf")}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <Select
+                      value={op}
+                      onValueChange={(v) =>
+                        updateRule(i, { operator: v as ConditionOp })
+                      }
+                    >
+                      <SelectTrigger className="bg-muted">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="present">{t("isPresent")}</SelectItem>
+                        <SelectItem value="absent">{t("isAbsent")}</SelectItem>
+                        <SelectItem value="equals">{t("equals")}</SelectItem>
+                        <SelectItem value="contains">{t("contains")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {withValue && (
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        value={rule.value ?? ""}
+                        onChange={(e) =>
+                          updateRule(i, { value: e.target.value })
+                        }
+                        placeholder={t("valueLabel")}
+                        className="bg-muted"
+                      />
+                    </div>
+                  )}
+                  {rules.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeRule(i)}
+                      className="shrink-0 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                </div>
+                <div className="mt-2">
+                  <NextNodeRow
+                    value={rule.next ?? ""}
+                    allNodes={allNodes}
+                    currentKey={currentKey}
+                    onChange={(v) => updateRule(i, { next: v })}
+                    label={t("branchThen")}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
-        {showValue && (
-          <div>
-            <label className="mb-1 block text-xs text-muted-foreground">{t("valueLabel")}</label>
-            <Input
-              value={cfg.value ?? ""}
-              onChange={(e) => onUpdateConfig({ value: e.target.value })}
-              className="bg-muted"
-            />
-          </div>
-        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={addRule}
+          className="mt-2"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {t("addBranch")}
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="mt-3">
         <NextNodeRow
-          value={cfg.true_next ?? ""}
+          value={elseNext}
           allNodes={allNodes}
           currentKey={currentKey}
-          onChange={(v) => onUpdateConfig({ true_next: v })}
-          label={t("ifTrueAdvance")}
-        />
-        <NextNodeRow
-          value={cfg.false_next ?? ""}
-          allNodes={allNodes}
-          currentKey={currentKey}
-          onChange={(v) => onUpdateConfig({ false_next: v })}
-          label={t("ifFalseAdvance")}
+          onChange={(v) => commit(rules, v)}
+          label={t("branchOtherwise")}
         />
       </div>
     </>

@@ -146,6 +146,75 @@ describe("deriveCanvasEdges — condition (true/false branches)", () => {
   });
 });
 
+describe("deriveCanvasEdges — condition (multi-branch rules)", () => {
+  const multiNode: BuilderNode = {
+    node_key: "c",
+    node_type: "condition",
+    config: {
+      subject: "last_message",
+      subject_key: "",
+      rules: [
+        { id: "r1", operator: "contains", value: "price", next: "a" },
+        { id: "r2", operator: "contains", value: "demo", next: "b" },
+      ],
+      else_next: "d",
+    },
+  };
+
+  it("emits one edge per rule plus the else fallback, each labeled", () => {
+    const edges = deriveCanvasEdges(
+      nodes(
+        multiNode,
+        { node_key: "a", node_type: "end", config: {} },
+        { node_key: "b", node_type: "end", config: {} },
+        { node_key: "d", node_type: "end", config: {} },
+      ),
+    );
+    expect(edges).toHaveLength(3);
+    expect(edges.find((e) => e.sourceHandle === "rule:r1")).toMatchObject({
+      target: "a",
+      label: 'contains "price"',
+    });
+    expect(edges.find((e) => e.sourceHandle === "rule:r2")).toMatchObject({
+      target: "b",
+    });
+    expect(edges.find((e) => e.sourceHandle === "else")).toMatchObject({
+      target: "d",
+      label: "otherwise",
+    });
+  });
+
+  it("drops rule edges whose target does not exist", () => {
+    const edges = deriveCanvasEdges(
+      nodes(multiNode, { node_key: "a", node_type: "end", config: {} }),
+    );
+    expect(edges.map((e) => e.sourceHandle)).toEqual(["rule:r1"]);
+  });
+
+  it("prefers rules over any stale legacy true_next/false_next", () => {
+    const edges = deriveCanvasEdges(
+      nodes(
+        {
+          node_key: "c",
+          node_type: "condition",
+          config: {
+            subject: "var",
+            subject_key: "x",
+            true_next: "legacy",
+            false_next: "legacy",
+            rules: [{ id: "r1", operator: "present", next: "a" }],
+            else_next: "d",
+          },
+        },
+        { node_key: "a", node_type: "end", config: {} },
+        { node_key: "d", node_type: "end", config: {} },
+        { node_key: "legacy", node_type: "end", config: {} },
+      ),
+    );
+    expect(edges.map((e) => e.sourceHandle).sort()).toEqual(["else", "rule:r1"]);
+  });
+});
+
 describe("deriveCanvasEdges — send_buttons (per-button)", () => {
   it("emits one edge per button, labeled with the button title", () => {
     const edges = deriveCanvasEdges(
@@ -312,7 +381,7 @@ describe("outgoingSlots", () => {
     ]);
   });
 
-  it("returns true/false slots for condition", () => {
+  it("returns true/false slots for a legacy binary condition", () => {
     const slots = outgoingSlots({
       node_key: "c",
       node_type: "condition",
@@ -320,6 +389,27 @@ describe("outgoingSlots", () => {
     });
     expect(slots.map((s) => s.id)).toEqual(["true", "false"]);
     expect(slots.map((s) => s.label)).toEqual(["true", "false"]);
+  });
+
+  it("returns one slot per rule plus 'else' for a multi-branch condition", () => {
+    const slots = outgoingSlots({
+      node_key: "c",
+      node_type: "condition",
+      config: {
+        subject: "last_message",
+        rules: [
+          { id: "r1", operator: "contains", value: "price", next: "" },
+          { id: "r2", operator: "present", next: "" },
+        ],
+        else_next: "",
+      },
+    });
+    expect(slots.map((s) => s.id)).toEqual(["rule:r1", "rule:r2", "else"]);
+    expect(slots.map((s) => s.label)).toEqual([
+      'contains "price"',
+      "is set",
+      "otherwise",
+    ]);
   });
 
   it("returns one slot per button, labelled with the title", () => {
@@ -417,6 +507,29 @@ describe("applyEdgeConnection", () => {
     expect(applyEdgeConnection(node, "false", "f")).toEqual({
       false_next: "f",
     });
+  });
+
+  it("patches the matching rule / else on a multi-branch condition", () => {
+    const node: BuilderNode = {
+      node_key: "c",
+      node_type: "condition",
+      config: {
+        subject: "last_message",
+        rules: [
+          { id: "r1", operator: "contains", value: "a", next: "" },
+          { id: "r2", operator: "contains", value: "b", next: "" },
+        ],
+        else_next: "",
+      },
+    };
+    expect(applyEdgeConnection(node, "rule:r2", "x")).toEqual({
+      rules: [
+        { id: "r1", operator: "contains", value: "a", next: "" },
+        { id: "r2", operator: "contains", value: "b", next: "x" },
+      ],
+    });
+    expect(applyEdgeConnection(node, "else", "y")).toEqual({ else_next: "y" });
+    expect(applyEdgeConnection(node, "rule:ghost", "z")).toBeNull();
   });
 
   it("patches only the matching button row on send_buttons", () => {
@@ -524,6 +637,31 @@ describe("unlinkNodeReferences", () => {
     };
     expect(cfg.true_next).toBe("");
     expect(cfg.false_next).toBe("");
+  });
+
+  it("clears matching rule targets and else_next on a multi-branch condition", () => {
+    const before: BuilderNode[] = [
+      {
+        node_key: "c",
+        node_type: "condition",
+        config: {
+          subject: "last_message",
+          rules: [
+            { id: "r1", operator: "contains", value: "a", next: "victim" },
+            { id: "r2", operator: "contains", value: "b", next: "safe" },
+          ],
+          else_next: "victim",
+        },
+      },
+      { node_key: "safe", node_type: "end", config: {} },
+    ];
+    const after = unlinkNodeReferences(before, "victim");
+    const cfg = after[0].config as {
+      rules: Array<{ id: string; next: string }>;
+      else_next: string;
+    };
+    expect(cfg.rules.map((r) => r.next)).toEqual(["", "safe"]);
+    expect(cfg.else_next).toBe("");
   });
 
   it("clears only the buttons that point at the deleted node", () => {

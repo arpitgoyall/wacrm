@@ -176,10 +176,8 @@ export function defaultConfigFor(type: NodeType): Record<string, unknown> {
       return {
         subject: "var",
         subject_key: "",
-        operator: "equals",
-        value: "",
-        true_next: "",
-        false_next: "",
+        rules: [{ id: "rule_1", operator: "equals", value: "", next: "" }],
+        else_next: "",
       };
     case "set_tag":
       return { mode: "add", tag_id: "", next_node_key: "" };

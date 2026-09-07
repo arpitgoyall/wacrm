@@ -605,6 +605,7 @@ function validateNode(
     }
 
     case "condition": {
+      const OPERATORS = ["equals", "contains", "present", "absent"];
       const cfg = node.config as {
         subject?: "var" | "tag" | "contact_field" | "last_message";
         subject_key?: string;
@@ -612,6 +613,13 @@ function validateNode(
         value?: string;
         true_next?: string;
         false_next?: string;
+        rules?: Array<{
+          id?: string;
+          operator?: "equals" | "contains" | "present" | "absent";
+          value?: string;
+          next?: string;
+        }>;
+        else_next?: string;
       };
       if (
         !cfg.subject ||
@@ -636,10 +644,58 @@ function validateNode(
           message: "Condition needs a subject_key (var name, tag id, or field name).",
         });
       }
-      if (
-        !cfg.operator ||
-        !["equals", "contains", "present", "absent"].includes(cfg.operator)
-      ) {
+
+      const checkTarget = (key: string | undefined, field: string, label: string) => {
+        if (!key) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field,
+            message: `Condition needs a node for ${label}.`,
+          });
+        } else if (!knownKeys.has(key)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field,
+            message: `Condition's ${label} points to non-existent node "${key}".`,
+          });
+        }
+      };
+
+      if (Array.isArray(cfg.rules) && cfg.rules.length > 0) {
+        // Multi-branch form (if / elseif / … / else).
+        cfg.rules.forEach((rule, i) => {
+          if (!rule.operator || !OPERATORS.includes(rule.operator)) {
+            issues.push({
+              severity: "error",
+              scope: "node",
+              node_key: node.node_key,
+              field: `rules[${i}].operator`,
+              message: `Branch ${i + 1} needs an operator.`,
+            });
+          } else if (
+            (rule.operator === "equals" || rule.operator === "contains") &&
+            (rule.value === undefined || rule.value === "")
+          ) {
+            issues.push({
+              severity: "warning",
+              scope: "node",
+              node_key: node.node_key,
+              field: `rules[${i}].value`,
+              message: `Branch ${i + 1}: operator "${rule.operator}" usually expects a comparison value.`,
+            });
+          }
+          checkTarget(rule.next, `rules[${i}].next`, `branch ${i + 1}`);
+        });
+        checkTarget(cfg.else_next, "else_next", 'the "otherwise" branch');
+        break;
+      }
+
+      // Legacy binary form.
+      if (!cfg.operator || !OPERATORS.includes(cfg.operator)) {
         issues.push({
           severity: "error",
           scope: "node",
@@ -659,26 +715,8 @@ function validateNode(
           message: `Operator "${cfg.operator}" usually expects a comparison value — empty value will only match empty subjects.`,
         });
       }
-      for (const branch of ["true_next", "false_next"] as const) {
-        const key = cfg[branch];
-        if (!key) {
-          issues.push({
-            severity: "error",
-            scope: "node",
-            node_key: node.node_key,
-            field: branch,
-            message: `Condition needs a node for the "${branch === "true_next" ? "true" : "false"}" branch.`,
-          });
-        } else if (!knownKeys.has(key)) {
-          issues.push({
-            severity: "error",
-            scope: "node",
-            node_key: node.node_key,
-            field: branch,
-            message: `Condition's "${branch}" points to non-existent node "${key}".`,
-          });
-        }
-      }
+      checkTarget(cfg.true_next, "true_next", 'the "true" branch');
+      checkTarget(cfg.false_next, "false_next", 'the "false" branch');
       break;
     }
 
@@ -784,8 +822,17 @@ function outgoingEdges(node: NodeInput): string[] {
       const cfg = node.config as {
         true_next?: string;
         false_next?: string;
+        rules?: Array<{ next?: string }>;
+        else_next?: string;
       };
       const out: string[] = [];
+      if (Array.isArray(cfg.rules) && cfg.rules.length > 0) {
+        for (const rule of cfg.rules) {
+          if (rule.next) out.push(rule.next);
+        }
+        if (cfg.else_next) out.push(cfg.else_next);
+        return out;
+      }
       if (cfg.true_next) out.push(cfg.true_next);
       if (cfg.false_next) out.push(cfg.false_next);
       return out;

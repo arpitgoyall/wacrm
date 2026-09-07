@@ -420,6 +420,82 @@ describe("validateFlowForActivation — nodes", () => {
   });
 });
 
+describe("validateFlowForActivation — condition (multi-branch)", () => {
+  const baseFlow = { ...validFlow, entry_node_id: "s" };
+  const nodesWith = (conditionConfig: Record<string, unknown>) => [
+    { node_key: "s", node_type: "start", config: { next_node_key: "c" } },
+    { node_key: "c", node_type: "condition", config: conditionConfig },
+    { node_key: "a", node_type: "handoff", config: {} },
+    { node_key: "b", node_type: "handoff", config: {} },
+  ];
+
+  it("passes on a well-formed multi-branch condition", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({
+        subject: "last_message",
+        subject_key: "",
+        rules: [
+          { id: "r1", operator: "contains", value: "price", next: "a" },
+          { id: "r2", operator: "present", next: "b" },
+        ],
+        else_next: "a",
+      }),
+    );
+    expect(issues).toEqual([]);
+  });
+
+  it("flags a rule with no target and a missing else_next", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({
+        subject: "last_message",
+        subject_key: "",
+        rules: [{ id: "r1", operator: "contains", value: "x", next: "" }],
+        else_next: "",
+      }),
+    );
+    expect(issues.some((i) => i.field === "rules[0].next")).toBe(true);
+    expect(issues.some((i) => i.field === "else_next")).toBe(true);
+  });
+
+  it("flags a rule target that points at a non-existent node", () => {
+    const issues = validateFlowForActivation(
+      baseFlow,
+      nodesWith({
+        subject: "var",
+        subject_key: "x",
+        rules: [{ id: "r1", operator: "equals", value: "y", next: "ghost" }],
+        else_next: "a",
+      }),
+    );
+    expect(
+      issues.some(
+        (i) => i.field === "rules[0].next" && i.message.includes("ghost"),
+      ),
+    ).toBe(true);
+  });
+
+  it("contributes rule + else targets to reachability", () => {
+    const set = reachableFromEntry("s", [
+      { node_key: "s", node_type: "start", config: { next_node_key: "c" } },
+      {
+        node_key: "c",
+        node_type: "condition",
+        config: {
+          subject: "last_message",
+          rules: [{ id: "r1", operator: "present", next: "a" }],
+          else_next: "b",
+        },
+      },
+      { node_key: "a", node_type: "handoff", config: {} },
+      { node_key: "b", node_type: "handoff", config: {} },
+    ]);
+    expect(set.has("a")).toBe(true);
+    expect(set.has("b")).toBe(true);
+  });
+});
+
 describe("validateFlowForActivation — send_media", () => {
   const baseFlow = { ...validFlow, entry_node_id: "s" };
   const nodesWith = (mediaConfig: Record<string, unknown>) => [

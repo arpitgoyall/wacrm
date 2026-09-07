@@ -412,7 +412,23 @@ export function summarizeNode(
     case 'condition': {
       const subjectKey =
         typeof cfg.subject_key === 'string' ? cfg.subject_key : '';
-      if (!subjectKey) return null;
+      const isLastMsg = cfg.subject === 'last_message';
+      if (!subjectKey && !isLastMsg) return null;
+      // Multi-branch: just report the subject + how many branches.
+      const rules = Array.isArray(cfg.rules) ? cfg.rules : null;
+      if (rules && rules.length > 0) {
+        const subj = isLastMsg
+          ? 'message'
+          : cfg.subject === 'tag'
+            ? `tag ${truncate(subjectKey, 20)}`
+            : cfg.subject === 'contact_field'
+              ? `field.${subjectKey}`
+              : `var.${subjectKey}`;
+        return `${subj} · ${rules.length} branch${rules.length === 1 ? '' : 'es'}`;
+      }
+      if (isLastMsg) {
+        return null;
+      }
       const subject =
         cfg.subject === 'tag'
           ? 'tag'

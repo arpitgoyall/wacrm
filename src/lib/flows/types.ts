@@ -165,6 +165,21 @@ export type ConditionSubject =
  * profile fields, or stored vars. Always auto-advances — no Meta
  * call, no customer-side input.
  */
+/**
+ * One branch of a multi-way `condition` (if / elseif / … / else).
+ * Branches share the node's single subject and are evaluated top to
+ * bottom; the first whose predicate is true routes the run to `next`.
+ */
+export interface ConditionRule {
+  /** Stable id — the canvas source handle is `rule:<id>`. */
+  id: string;
+  operator: ConditionOperator;
+  /** Compared against the subject for `equals` / `contains`. */
+  value?: string;
+  /** Target node_key for this branch. */
+  next: string;
+}
+
 export interface ConditionNodeConfig {
   subject: ConditionSubject;
   /**
@@ -175,13 +190,23 @@ export interface ConditionNodeConfig {
    *   inbound text (see LAST_MESSAGE_VAR in the flows engine).
    */
   subject_key: string;
-  operator: ConditionOperator;
-  /** Compared against `subject` for `equals`/`contains`. Ignored for `present`/`absent`. */
+  /**
+   * Multi-branch form. When present and non-empty, the run walks
+   * `rules` in order (first match wins) and falls through to
+   * `else_next`; `operator` / `value` / `true_next` / `false_next` are
+   * ignored.
+   */
+  rules?: ConditionRule[];
+  /** Fallback target when no rule matched (multi-branch form). */
+  else_next?: string;
+  /**
+   * @deprecated Binary form, kept for flows authored before
+   * multi-branch. Superseded by `rules` + `else_next`.
+   */
+  operator?: ConditionOperator;
   value?: string;
-  /** Node to advance to when the predicate evaluates true. */
-  true_next: string;
-  /** Node to advance to when it evaluates false. */
-  false_next: string;
+  true_next?: string;
+  false_next?: string;
 }
 
 export interface SetTagNodeConfig {

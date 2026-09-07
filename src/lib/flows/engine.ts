@@ -45,6 +45,7 @@ import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
+  type ConditionOperator,
   type CtwaReferral,
   type DispatchInboundInput,
   type DispatchInboundResult,
@@ -219,7 +220,7 @@ export function isTerminal(node_type: string): boolean {
  * DB lookup for `tag` / `contact_field` subjects.
  */
 export function evaluateConditionPredicate(args: {
-  operator: ConditionNodeConfig["operator"];
+  operator: ConditionOperator;
   /**
    * Resolved value of the subject. `undefined` means the subject is
    * absent (no var with that key / no such tag / contact field is
@@ -601,11 +602,67 @@ async function executeHandoff(
  *     `subject_key` IS the tag UUID; the SELECT returns 1 row or 0.
  *   - `contact_field` → one of name/email/phone/company on `contacts`.
  */
+/** Where a `condition` node routes the run next. */
+interface ConditionOutcome {
+  /** Target node_key, or undefined when the chosen branch has no
+   *  target set (→ the advance loop fails the run, as before). */
+  nextKey: string | undefined;
+  /** For the `node_entered` log: "true" / "false" / "rule[N]" / "else". */
+  branchLabel: string;
+}
+
 async function evaluateConditionNode(
   db: AdminClient,
   run: FlowRunRow,
   cfg: ConditionNodeConfig,
-): Promise<boolean> {
+): Promise<ConditionOutcome> {
+  const subjectValue = await resolveConditionSubject(db, run, cfg);
+
+  // Multi-branch form (if / elseif / … / else): first matching rule
+  // wins, top to bottom; no match → else_next.
+  if (Array.isArray(cfg.rules) && cfg.rules.length > 0) {
+    for (let i = 0; i < cfg.rules.length; i += 1) {
+      const rule = cfg.rules[i];
+      const hit = evaluateConditionPredicate({
+        operator: rule.operator,
+        subjectValue,
+        configValue: rule.value,
+      });
+      if (hit) {
+        return { nextKey: rule.next || undefined, branchLabel: `rule[${i}]` };
+      }
+    }
+    return { nextKey: cfg.else_next || undefined, branchLabel: "else" };
+  }
+
+  // Legacy binary form.
+  const hit = evaluateConditionPredicate({
+    operator: cfg.operator ?? "equals",
+    subjectValue,
+    configValue: cfg.value,
+  });
+  return {
+    nextKey: (hit ? cfg.true_next : cfg.false_next) || undefined,
+    branchLabel: hit ? "true" : "false",
+  };
+}
+
+/**
+ * Resolve a condition node's single shared subject value from DB / run
+ * state. Split from the routing above so the predicate stays
+ * unit-testable without a Supabase mock.
+ *
+ * Subject sources:
+ *   - `last_message` → the current inbound text (LAST_MESSAGE_VAR).
+ *   - `var` → `flow_runs.vars[subject_key]`.
+ *   - `tag` → present iff `contact_tags(contact_id, tag_id)` exists.
+ *   - `contact_field` → one of name/email/phone/company on `contacts`.
+ */
+async function resolveConditionSubject(
+  db: AdminClient,
+  run: FlowRunRow,
+  cfg: ConditionNodeConfig,
+): Promise<string | undefined> {
   let subjectValue: string | undefined;
   if (cfg.subject === "last_message") {
     // Reserved in-memory var — no subject_key needed.
@@ -639,11 +696,7 @@ async function evaluateConditionNode(
     const raw = (data as Record<string, unknown> | null)?.[cfg.subject_key];
     subjectValue = typeof raw === "string" && raw.length > 0 ? raw : undefined;
   }
-  return evaluateConditionPredicate({
-    operator: cfg.operator,
-    subjectValue,
-    configValue: cfg.value,
-  });
+  return subjectValue;
 }
 
 /**
@@ -822,11 +875,9 @@ async function advanceFromNodeKey(
     }
     if (node.node_type === "condition") {
       const cfg = node.config as unknown as ConditionNodeConfig;
-      let branch: "true" | "false";
+      let outcome: ConditionOutcome;
       try {
-        branch = (await evaluateConditionNode(db, run, cfg))
-          ? "true"
-          : "false";
+        outcome = await evaluateConditionNode(db, run, cfg);
       } catch (err) {
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "condition_evaluation_failed",
@@ -835,10 +886,9 @@ async function advanceFromNodeKey(
         await endRun(db, run.id, "failed", "condition_evaluation_failed");
         return { outcome: "completed" };
       }
-      currentKey =
-        branch === "true" ? cfg.true_next : cfg.false_next;
+      currentKey = outcome.nextKey ?? null;
       await logEvent(db, run.id, "node_entered", node.node_key, {
-        condition_result: branch,
+        condition_result: outcome.branchLabel,
         advancing_to: currentKey,
       });
       continue;

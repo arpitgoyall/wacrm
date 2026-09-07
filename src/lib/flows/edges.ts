@@ -37,6 +37,21 @@ export interface CanvasEdge {
   label?: string;
 }
 
+/** Short canvas label for one multi-branch condition rule. */
+function conditionRuleLabel(
+  rule: Record<string, unknown>,
+  index: number,
+): string {
+  const op = typeof rule.operator === "string" ? rule.operator : "";
+  const raw = typeof rule.value === "string" ? rule.value : "";
+  const value = raw.length > 20 ? `${raw.slice(0, 19)}…` : raw;
+  if (op === "equals") return value ? `= "${value}"` : "= (empty)";
+  if (op === "contains") return value ? `contains "${value}"` : "contains …";
+  if (op === "present") return "is set";
+  if (op === "absent") return "is empty";
+  return `branch ${index + 1}`;
+}
+
 export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
   const knownKeys = new Set(nodes.map((n) => n.node_key));
   const edges: CanvasEdge[] = [];
@@ -62,6 +77,36 @@ export function deriveCanvasEdges(nodes: BuilderNode[]): CanvasEdge[] {
       }
 
       case "condition": {
+        const rules = Array.isArray((cfg as { rules?: unknown }).rules)
+          ? (cfg as { rules: Array<Record<string, unknown>> }).rules
+          : null;
+        if (rules && rules.length > 0) {
+          // Multi-branch: one edge per rule + the else fallback.
+          rules.forEach((rule, i) => {
+            const id = typeof rule.id === "string" ? rule.id : null;
+            const next =
+              typeof rule.next === "string" ? rule.next : null;
+            if (!id || !next || !knownKeys.has(next)) return;
+            edges.push({
+              id: `${node.node_key}--rule:${id}--${next}`,
+              source: node.node_key,
+              target: next,
+              sourceHandle: `rule:${id}`,
+              label: conditionRuleLabel(rule, i),
+            });
+          });
+          const elseNext = (cfg as { else_next?: string }).else_next;
+          if (elseNext && knownKeys.has(elseNext)) {
+            edges.push({
+              id: `${node.node_key}--else--${elseNext}`,
+              source: node.node_key,
+              target: elseNext,
+              sourceHandle: "else",
+              label: "otherwise",
+            });
+          }
+          break;
+        }
         const trueNext = (cfg as { true_next?: string }).true_next;
         const falseNext = (cfg as { false_next?: string }).false_next;
         if (trueNext && knownKeys.has(trueNext)) {
@@ -181,11 +226,25 @@ export function outgoingSlots(node: BuilderNode): OutgoingSlot[] {
     case "set_tag":
       return [{ id: "next", label: "Next" }];
 
-    case "condition":
+    case "condition": {
+      const rules = Array.isArray((cfg as { rules?: unknown }).rules)
+        ? (cfg as { rules: Array<Record<string, unknown>> }).rules
+        : null;
+      if (rules && rules.length > 0) {
+        const slots: OutgoingSlot[] = [];
+        rules.forEach((rule, i) => {
+          const id = typeof rule.id === "string" ? rule.id : null;
+          if (!id) return;
+          slots.push({ id: `rule:${id}`, label: conditionRuleLabel(rule, i) });
+        });
+        slots.push({ id: "else", label: "otherwise" });
+        return slots;
+      }
       return [
         { id: "true", label: "true" },
         { id: "false", label: "false" },
       ];
+    }
 
     case "send_buttons": {
       const buttons = Array.isArray((cfg as { buttons?: unknown }).buttons)
@@ -256,10 +315,24 @@ export function applyEdgeConnection(
       if (sourceHandle === "next") return { next_node_key: targetKey };
       return null;
 
-    case "condition":
+    case "condition": {
       if (sourceHandle === "true") return { true_next: targetKey };
       if (sourceHandle === "false") return { false_next: targetKey };
+      if (sourceHandle === "else") return { else_next: targetKey };
+      if (sourceHandle.startsWith("rule:")) {
+        const ruleId = sourceHandle.slice("rule:".length);
+        const rules = Array.isArray((node.config as { rules?: unknown }).rules)
+          ? (node.config as { rules: Array<Record<string, unknown>> }).rules
+          : [];
+        if (!rules.some((r) => r.id === ruleId)) return null;
+        return {
+          rules: rules.map((r) =>
+            r.id === ruleId ? { ...r, next: targetKey } : r,
+          ),
+        };
+      }
       return null;
+    }
 
     case "send_buttons": {
       if (!sourceHandle.startsWith("button:")) return null;
@@ -353,12 +426,29 @@ function patchedConfigWithoutKey(
     }
 
     case "condition": {
-      const c = cfg as { true_next?: string; false_next?: string };
+      const c = cfg as {
+        true_next?: string;
+        false_next?: string;
+        else_next?: string;
+        rules?: Array<Record<string, unknown>>;
+      };
+      const rules = Array.isArray(c.rules) ? c.rules : null;
+      const ruleMatch =
+        rules?.some((r) => r.next === deletedKey) ?? false;
+      const elseMatch = c.else_next === deletedKey;
       const trueMatch = c.true_next === deletedKey;
       const falseMatch = c.false_next === deletedKey;
-      if (!trueMatch && !falseMatch) return null;
+      if (!ruleMatch && !elseMatch && !trueMatch && !falseMatch) return null;
       return {
         ...cfg,
+        ...(ruleMatch
+          ? {
+              rules: rules!.map((r) =>
+                r.next === deletedKey ? { ...r, next: "" } : r,
+              ),
+            }
+          : {}),
+        ...(elseMatch ? { else_next: "" } : {}),
         ...(trueMatch ? { true_next: "" } : {}),
         ...(falseMatch ? { false_next: "" } : {}),
       };
