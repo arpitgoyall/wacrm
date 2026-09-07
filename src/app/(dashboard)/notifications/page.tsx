@@ -5,16 +5,25 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import type { Notification } from "@/types";
-import { Bell, CheckCheck, Loader2, UserPlus } from "lucide-react";
+import {
+  Bell,
+  CheckCheck,
+  Clock,
+  Loader2,
+  MessageSquare,
+  UserPlus,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-// Icon per notification type. Only one type exists today
-// (conversation_assigned) but this keeps future types a one-line add.
+// Icon per notification type.
 const TYPE_ICON: Record<Notification["type"], typeof Bell> = {
   conversation_assigned: UserPlus,
+  new_message: MessageSquare,
+  new_conversation: MessageSquare,
+  sla_breach: Clock,
 };
 
 export default function NotificationsPage() {
@@ -45,6 +54,20 @@ export default function NotificationsPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     load();
+  }, [load]);
+
+  // Re-sync on tab focus so a notification (or a "mark all read" from
+  // another device) that arrived while this tab slept isn't missed.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
   }, [load]);
 
   // Realtime — new assignments appear without a refresh, and a

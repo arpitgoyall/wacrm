@@ -52,6 +52,9 @@ interface AccountSummary {
   sales_pipeline_id: string | null;
   /** Pipeline support-tagged agents see in the inbox (migration 049). */
   support_pipeline_id: string | null;
+  /** Minutes before an unanswered assigned chat pings the agent; NULL
+   *  or 0 = off (migration 058). */
+  sla_response_minutes: number | null;
 }
 
 /**
@@ -260,7 +263,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             .from("accounts")
             // default_currency added in migration 021; narrowed to the
             // USD fallback below for older schemas where it reads null.
-            .select("id, name, default_currency, sales_pipeline_id, support_pipeline_id")
+            .select(
+              "id, name, default_currency, sales_pipeline_id, support_pipeline_id, sla_response_minutes",
+            )
             .eq("id", data.account_id)
             .maybeSingle();
           if (accountErr) {
@@ -277,6 +282,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               default_currency: account.default_currency ?? DEFAULT_CURRENCY,
               sales_pipeline_id: account.sales_pipeline_id ?? null,
               support_pipeline_id: account.support_pipeline_id ?? null,
+              sla_response_minutes: account.sla_response_minutes ?? null,
             };
           }
         }

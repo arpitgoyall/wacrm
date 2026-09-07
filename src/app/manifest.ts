@@ -12,6 +12,14 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#020617",
     theme_color: "#020617",
     icons: [
+      // Raster first — iOS and several Android builds ignore SVG for the
+      // installed-app icon and for notification icons.
+      {
+        src: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
       {
         src: "/icon-192.svg",
         sizes: "192x192",

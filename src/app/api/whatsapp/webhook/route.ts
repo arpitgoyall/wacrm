@@ -705,6 +705,101 @@ async function recordCtwaClickEvent(
   }
 }
 
+/**
+ * Notify the assigned agent that a customer replied on a conversation
+ * they own. One row into `notifications` (type `new_message`) — the
+ * `on_notification_created` trigger fans it out to their devices via
+ * web push; the in-app realtime listener handles the tab-open case.
+ *
+ * De-duped: skipped while an unread `new_message` notification for
+ * this (agent, conversation) already exists, so a burst of replies
+ * produces a single standing ping until the agent reads the thread.
+ * Best-effort — never blocks inbound processing.
+ */
+async function recordAssignedMessageNotification(
+  accountId: string,
+  conversation: { id: string; assigned_agent_id?: string | null },
+  contact: { id: string; name?: string | null; phone?: string | null },
+  preview: string,
+) {
+  try {
+    const agentId = conversation.assigned_agent_id
+    if (!agentId) return
+
+    const db = supabaseAdmin()
+    const { data: existing } = await db
+      .from('notifications')
+      .select('id')
+      .eq('user_id', agentId)
+      .eq('conversation_id', conversation.id)
+      .eq('type', 'new_message')
+      .is('read_at', null)
+      .limit(1)
+    if (existing && existing.length > 0) return
+
+    const who = contact.name?.trim() || contact.phone || 'a contact'
+    const { error } = await db.from('notifications').insert({
+      account_id: accountId,
+      user_id: agentId,
+      type: 'new_message',
+      conversation_id: conversation.id,
+      contact_id: contact.id,
+      actor_user_id: null,
+      title: `New message from ${who}`,
+      body: preview.slice(0, 140) || 'Sent a message',
+    })
+    if (error) {
+      console.error('[webhook] new_message notification failed:', error.message)
+    }
+  } catch (err) {
+    console.error('[webhook] recordAssignedMessageNotification threw:', err)
+  }
+}
+
+/**
+ * Notify the account's owner + admins that a new conversation opened
+ * with nobody assigned to it. One `notifications` row each (type
+ * `new_conversation`) → web push via the `on_notification_created`
+ * trigger. Best-effort; runs only on first-ever open of the thread.
+ */
+async function recordNewConversationNotification(
+  accountId: string,
+  conversation: { id: string; assigned_agent_id?: string | null },
+  contact: { id: string; name?: string | null; phone?: string | null },
+) {
+  try {
+    // If it somehow already has an assignee, that path's own
+    // notification covers it.
+    if (conversation.assigned_agent_id) return
+
+    const db = supabaseAdmin()
+    const { data: recipients, error: recErr } = await db
+      .from('profiles')
+      .select('user_id')
+      .eq('account_id', accountId)
+      .in('account_role', ['owner', 'admin'])
+    if (recErr || !recipients || recipients.length === 0) return
+
+    const who = contact.name?.trim() || contact.phone || 'a contact'
+    const rows = (recipients as { user_id: string }[]).map((r) => ({
+      account_id: accountId,
+      user_id: r.user_id,
+      type: 'new_conversation' as const,
+      conversation_id: conversation.id,
+      contact_id: contact.id,
+      actor_user_id: null,
+      title: 'New conversation',
+      body: `${who} started a new conversation.`,
+    }))
+    const { error } = await db.from('notifications').insert(rows)
+    if (error) {
+      console.error('[webhook] new_conversation notification failed:', error.message)
+    }
+  } catch (err) {
+    console.error('[webhook] recordNewConversationNotification threw:', err)
+  }
+}
+
 async function processMessage(
   message: WhatsAppMessage,
   contact: { profile: { name: string }; wa_id: string },
@@ -815,6 +910,13 @@ async function processMessage(
       conversation_id: conversation.id,
       contact_id: contactRecord.id,
     })
+    // A brand-new thread lands unassigned — tell the people who triage
+    // the shared queue (owners + admins).
+    await recordNewConversationNotification(
+      accountId,
+      conversation,
+      contactRecord,
+    )
   }
 
   // Reactions short-circuit here — they aren't messages. We never insert
@@ -964,6 +1066,14 @@ async function processMessage(
   // so the broadcast's `replied_count` advances (via the aggregate
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
+
+  // Ping the agent who owns this thread that the customer replied.
+  await recordAssignedMessageNotification(
+    accountId,
+    conversation,
+    contactRecord,
+    contentText ?? `[${message.type}]`,
+  )
 
   // ============================================================
   // Flow runner dispatch.

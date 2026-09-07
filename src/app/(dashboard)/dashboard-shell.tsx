@@ -8,6 +8,7 @@ import { Header } from "@/components/layout/header";
 import { AccountAccessAlert } from "@/components/layout/account-access-alert";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
 import { InboundMessageNotifier } from "@/components/inbound-message-notifier";
+import { NotificationsClient } from "@/components/push/notifications-client";
 
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
@@ -47,6 +48,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
           signed in. Headless — renders nothing. */}
       <PresenceHeartbeat />
       <InboundMessageNotifier />
+      <NotificationsClient />
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header onOpenSidebar={() => setSidebarOpen(true)} />

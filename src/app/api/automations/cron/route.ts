@@ -4,6 +4,7 @@ import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
 import { drainDealStageEvents } from '@/lib/automations/deal-stage-cron'
 import { syncMetaAds } from '@/lib/ads/meta-sync-run'
+import { sweepSlaBreaches } from '@/lib/notifications/sla'
 import { checkCronAuth } from '@/lib/cron-auth'
 
 // The pending-executions + deal-stage loops can each make up to 50
@@ -84,5 +85,18 @@ export async function GET(request: Request) {
   // tick is cheap — most ticks return `accountsSkipped`. Never throws.
   const adSync = await syncMetaAds()
 
-  return NextResponse.json({ processed, dealStageProcessed, adSync })
+  // SLA-breach notifications for assigned conversations left unanswered
+  // past each account's `sla_response_minutes`. No-op for accounts that
+  // haven't set a threshold. Never throws.
+  const slaSweep = await sweepSlaBreaches().catch((err) => {
+    console.error('[cron] sweepSlaBreaches failed:', err)
+    return { notified: 0 }
+  })
+
+  return NextResponse.json({
+    processed,
+    dealStageProcessed,
+    adSync,
+    slaSweep,
+  })
 }

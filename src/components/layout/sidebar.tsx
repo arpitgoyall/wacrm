@@ -135,7 +135,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     return () => window.removeEventListener("focus", onFocus);
   }, [refreshProfile]);
   const totalUnread = useTotalUnread();
-  const unreadNotifications = useUnreadNotifications();
+  const unreadNotifications = useUnreadNotifications(account?.id);
   // Only surface the account-name strip when it actually carries
   // information. A solo user's personal account is named after them
   // (the 017 signup trigger seeds it from `full_name`), so showing it

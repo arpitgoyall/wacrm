@@ -71,6 +71,12 @@ export interface Account {
   sales_pipeline_id?: string | null;
   /** Pipeline support-tagged agents see in the inbox (migration 049). */
   support_pipeline_id?: string | null;
+  /**
+   * Minutes an assigned conversation may sit on an unanswered customer
+   * message before the agent gets an `sla_breach` notification.
+   * NULL / 0 disables SLA alerts (migration 058).
+   */
+  sla_response_minutes?: number | null;
 }
 
 /**
@@ -208,10 +214,14 @@ export interface Conversation {
 }
 
 // ============================================================
-// Notifications (migration 027)
+// Notifications (migration 027; types widened in 057)
 // ============================================================
 
-export type NotificationType = 'conversation_assigned';
+export type NotificationType =
+  | 'conversation_assigned'
+  | 'new_message'
+  | 'new_conversation'
+  | 'sla_breach';
 
 export interface Notification {
   id: string;

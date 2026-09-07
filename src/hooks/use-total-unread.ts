@@ -24,8 +24,9 @@ export function useTotalUnread(): number {
     let cancelled = false;
 
     // Initial load. RLS scopes this to the signed-in user automatically —
-    // no explicit user_id filter needed here.
-    (async () => {
+    // no explicit user_id filter needed here. Also re-run on tab focus /
+    // realtime rejoin so a dropped socket doesn't leave the count stale.
+    const refetch = async () => {
       const { data, error } = await supabase
         .from("conversations")
         .select("id, unread_count");
@@ -40,7 +41,15 @@ export function useTotalUnread(): number {
       }
       countsRef.current = map;
       setTotal(sum);
-    })();
+    };
+
+    void refetch();
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refetch();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
 
     const channel = supabase
       .channel("total-unread-realtime")
@@ -62,10 +71,14 @@ export function useTotalUnread(): number {
           setTotal(sum);
         },
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") void refetch();
+      });
 
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
       supabase.removeChannel(channel);
     };
   }, []);

@@ -32,7 +32,12 @@ export const metadata: Metadata = {
     follow: false,
   },
   icons: {
-    icon: [{ url: "/whatsapp-icon.svg", type: "image/svg+xml" }],
+    icon: [
+      { url: "/whatsapp-icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", type: "image/png", sizes: "192x192" },
+    ],
+    // iOS reads this (not the manifest) for the Home Screen icon.
+    apple: [{ url: "/icon-192.png", sizes: "192x192" }],
   },
   formatDetection: {
     email: false,
