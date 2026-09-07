@@ -408,6 +408,16 @@ export interface DispatchInboundInput {
    * mid-conversation doesn't rewrite them). Absent for organic inbound.
    */
   referral?: CtwaReferral;
+  /**
+   * Flow bound to the ad / campaign this inbound came from
+   * (`ctwa_ad_bindings`, migration 054), resolved by the webhook. When
+   * set and the contact has NO active run, the engine starts this flow
+   * directly — ahead of entry-trigger matching. A stale binding (flow
+   * missing / not active / wrong account) is ignored and the engine
+   * falls back to trigger matching. Null / absent for organic inbound
+   * or an unbound ad.
+   */
+  boundFlowId?: string | null;
 }
 
 export interface DispatchInboundResult {

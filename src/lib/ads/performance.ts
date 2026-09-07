@@ -413,8 +413,26 @@ export interface AdSyncMeta {
   error: string | null;
 }
 
+/** Active flows an ad can be bound to (migration 054). */
+export interface AdFlowOption {
+  id: string;
+  name: string;
+}
+
+/** One row of `ctwa_ad_bindings`. */
+export interface AdBindingRow {
+  match_type: 'ad' | 'campaign';
+  match_value: string;
+  flow_id: string;
+}
+
 export interface AdPerformanceResult extends AdPerformance {
   sync: AdSyncMeta;
+  /** Active flows, for the per-ad "Flow" picker. Empty when the account
+   *  has no active flows. */
+  flows: AdFlowOption[];
+  /** Current ad/campaign → flow bindings. */
+  bindings: AdBindingRow[];
 }
 
 /**
@@ -437,6 +455,8 @@ export async function loadAdPerformance(
     campaignsRes,
     adsetsRes,
     cfgRes,
+    flowsRes,
+    bindingsRes,
   ] = await Promise.all([
     db
       .from('ctwa_ads')
@@ -461,6 +481,15 @@ export async function loadAdPerformance(
       .from('whatsapp_config')
       .select('ad_account_id, ad_sync_enabled, ad_synced_at, ad_sync_error')
       .maybeSingle(),
+    db
+      .from('flows')
+      .select('id, name')
+      .eq('status', 'active')
+      .order('name', { ascending: true }),
+    db
+      .from('ctwa_ad_bindings')
+      .select('match_type, match_value, flow_id')
+      .eq('is_active', true),
   ]);
 
   if (adsRes.error) throw adsRes.error;
@@ -495,6 +524,11 @@ export async function loadAdPerformance(
     ad_sync_error: string | null;
   } | null;
 
+  const flows = flowsRes.error ? [] : ((flowsRes.data ?? []) as AdFlowOption[]);
+  const bindings = bindingsRes.error
+    ? []
+    : ((bindingsRes.data ?? []) as AdBindingRow[]);
+
   return {
     rows,
     summary,
@@ -504,5 +538,7 @@ export async function loadAdPerformance(
       syncedAt: cfg?.ad_synced_at ?? null,
       error: cfg?.ad_sync_error ?? null,
     },
+    flows,
+    bindings,
   };
 }

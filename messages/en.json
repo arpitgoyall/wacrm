@@ -1838,7 +1838,8 @@
       "roas": "ROAS",
       "cpl": "CPL",
       "group": "Name",
-      "ads": "Ads"
+      "ads": "Ads",
+      "flow": "Flow"
     },
     "empty": {
       "title": "No CTWA ad leads yet",
@@ -1865,6 +1866,12 @@
       "never": "Not synced yet",
       "lastSynced": "Ad data synced {time}",
       "disabled": "Ad spend sync is off. Connect an ad account in Settings → WhatsApp to see spend, ROAS and CPL."
+    },
+    "bind": {
+      "none": "— None —",
+      "saved": "Flow linked to this ad",
+      "cleared": "Flow link removed",
+      "error": "Couldn't update the flow link"
     }
   }
 }

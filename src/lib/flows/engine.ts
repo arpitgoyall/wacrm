@@ -970,13 +970,36 @@ export async function dispatchInboundToFlows(
       return handleReplyForActiveRun(db, activeRun, input.message, nodes);
     }
 
-    // No active run → look for a flow whose entry trigger matches.
-    const flow = await findEntryFlow(
-      db,
-      input.accountId,
-      input.message,
-      input.isFirstInboundMessage,
-    );
+    // No active run. An ad → Flow binding (resolved by the webhook)
+    // takes precedence over entry-trigger matching; a stale binding
+    // (flow gone / archived / another account) falls through.
+    let flow: FlowRow | null = null;
+    if (input.boundFlowId) {
+      const bound = await loadFlow(db, input.boundFlowId);
+      if (
+        bound &&
+        bound.status === "active" &&
+        bound.account_id === input.accountId &&
+        bound.entry_node_id
+      ) {
+        flow = bound;
+      } else {
+        console.warn(
+          "[flows] ignoring stale ad binding → flow",
+          input.boundFlowId,
+        );
+      }
+    }
+
+    // Otherwise → look for a flow whose entry trigger matches.
+    if (!flow) {
+      flow = await findEntryFlow(
+        db,
+        input.accountId,
+        input.message,
+        input.isFirstInboundMessage,
+      );
+    }
     if (!flow || !flow.entry_node_id) {
       return { consumed: false, outcome: "no_match" };
     }

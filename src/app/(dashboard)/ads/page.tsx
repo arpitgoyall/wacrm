@@ -29,6 +29,8 @@ import {
   type AdPerformanceResult,
   type AdPerformanceRow,
   type AdGroupBy,
+  type AdBindingRow,
+  type AdFlowOption,
 } from '@/lib/ads/performance';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -115,6 +117,43 @@ export default function AdsPage() {
     );
   }
 
+  async function setBinding(matchValue: string, flowId: string) {
+    try {
+      const res = await fetch('/api/ads/bindings', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          match_type: 'ad',
+          match_value: matchValue,
+          flow_id: flowId || null,
+        }),
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b?.error ?? 'bind failed');
+      }
+      setData((prev) => {
+        if (!prev) return prev;
+        const rest = prev.bindings.filter(
+          (b) => !(b.match_type === 'ad' && b.match_value === matchValue)
+        );
+        return {
+          ...prev,
+          bindings: flowId
+            ? [
+                ...rest,
+                { match_type: 'ad', match_value: matchValue, flow_id: flowId },
+              ]
+            : rest,
+        };
+      });
+      toast.success(flowId ? t('bind.saved') : t('bind.cleared'));
+    } catch (err) {
+      console.error('[ads] bind failed:', err);
+      toast.error(t('bind.error'));
+    }
+  }
+
   if (error) {
     return (
       <div className="flex h-64 flex-col items-center justify-center gap-3">
@@ -134,7 +173,7 @@ export default function AdsPage() {
     );
   }
 
-  const { rows, summary, sync } = data;
+  const { rows, summary, sync, flows, bindings } = data;
   const hasSpend = summary.totalSpend > 0;
   const lastSynced = timeAgo(sync.syncedAt);
 
@@ -277,6 +316,10 @@ export default function AdsPage() {
               hasSpend={hasSpend}
               canRename={canManage}
               onRenamed={applyRename}
+              flows={flows}
+              bindings={bindings}
+              canBind={canManage}
+              onBind={setBinding}
               t={t}
             />
           ) : (
@@ -350,6 +393,10 @@ function AdTable({
   hasSpend,
   canRename,
   onRenamed,
+  flows,
+  bindings,
+  canBind,
+  onBind,
   t,
 }: {
   rows: AdPerformanceRow[];
@@ -357,14 +404,27 @@ function AdTable({
   hasSpend: boolean;
   canRename: boolean;
   onRenamed: (sourceId: string, label: string | null) => void;
+  flows: AdFlowOption[];
+  bindings: AdBindingRow[];
+  canBind: boolean;
+  onBind: (matchValue: string, flowId: string) => void;
   t: T;
 }) {
+  const showFlow = flows.length > 0;
+  const boundFlow = new Map(
+    bindings
+      .filter((b) => b.match_type === 'ad')
+      .map((b) => [b.match_value, b.flow_id])
+  );
   return (
     <div className="border-border bg-card overflow-x-auto rounded-xl border">
       <table className="w-full min-w-[820px] text-sm">
         <thead>
           <tr className="border-border text-muted-foreground border-b text-[11px] font-medium tracking-wider uppercase">
             <Th first>{t('table.ad')}</Th>
+            {showFlow && (
+              <th className="px-3 py-3 text-left">{t('table.flow')}</th>
+            )}
             <Th>{t('table.leads')}</Th>
             <Th>{t('table.deals')}</Th>
             <Th>{t('table.won')}</Th>
@@ -384,6 +444,11 @@ function AdTable({
               hasSpend={hasSpend}
               canRename={canRename && row.id !== null}
               onRenamed={(label) => onRenamed(row.source_id, label)}
+              showFlow={showFlow}
+              flows={flows}
+              boundFlowId={boundFlow.get(row.source_id) ?? ''}
+              canBind={canBind}
+              onBind={onBind}
               t={t}
             />
           ))}
@@ -467,6 +532,11 @@ function AdRow({
   hasSpend,
   canRename,
   onRenamed,
+  showFlow,
+  flows,
+  boundFlowId,
+  canBind,
+  onBind,
   t,
 }: {
   row: AdPerformanceRow;
@@ -474,6 +544,11 @@ function AdRow({
   hasSpend: boolean;
   canRename: boolean;
   onRenamed: (label: string | null) => void;
+  showFlow: boolean;
+  flows: AdFlowOption[];
+  boundFlowId: string;
+  canBind: boolean;
+  onBind: (matchValue: string, flowId: string) => void;
   t: T;
 }) {
   const [editing, setEditing] = useState(false);
@@ -599,6 +674,24 @@ function AdRow({
           </div>
         )}
       </td>
+      {showFlow && (
+        <td className="px-3 py-3">
+          <select
+            value={boundFlowId}
+            onChange={(e) => onBind(row.source_id, e.target.value)}
+            disabled={!canBind}
+            aria-label={t('table.flow')}
+            className="border-border bg-background max-w-[170px] truncate rounded-md border px-2 py-1 text-xs outline-none disabled:opacity-60"
+          >
+            <option value="">{t('bind.none')}</option>
+            {flows.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        </td>
+      )}
       <td className="px-3 py-3 text-right tabular-nums">
         {row.leads.toLocaleString()}
       </td>

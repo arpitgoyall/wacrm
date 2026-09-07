@@ -9,6 +9,7 @@ import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
+import { resolveBoundFlow } from '@/lib/ads/bindings'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
@@ -778,6 +779,20 @@ async function processMessage(
     await recordCtwaAd(accountId, message.referral)
   }
 
+  // Ad → Flow binding (migration 054). When this inbound came from a
+  // CTWA ad that's bound to a Flow, resolve it now and hand it to the
+  // Flows engine below — it starts that flow instead of trigger-matching
+  // (a binding beats `first_inbound_message`). Best-effort; null when
+  // there's no referral or no binding.
+  let boundFlowId: string | null = null
+  if (message.referral?.source_id) {
+    boundFlowId = await resolveBoundFlow(
+      supabaseAdmin(),
+      accountId,
+      message.referral.source_id,
+    )
+  }
+
   // Find or create conversation
   const convResult = await findOrCreateConversation(
     accountId,
@@ -989,6 +1004,10 @@ async function processMessage(
     // ignores it. Meta only sends it on the first inbound after an ad
     // tap, which lines up with the `first_inbound_message` trigger.
     referral: message.referral,
+    // Flow bound to this ad / campaign (migration 054), if any. The
+    // engine starts it (when there's no active run) ahead of any
+    // trigger match.
+    boundFlowId,
   })
   const flowConsumed = flowResult.consumed
 
