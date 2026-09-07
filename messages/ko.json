@@ -1007,10 +1007,12 @@
         "modeLabel": "모드",
         "modes": {
           "round_robin": "순차 배정",
-          "specific": "특정 상담원"
+          "specific": "특정 상담원",
+          "conversation_owner": "대화 담당자"
         },
         "agentLabel": "상담원",
         "roundRobinAgentsLabel": "라운드 로빈 상담원",
+        "conversationOwnerHint": "연락처의 대화가 배정된 상담원에게 딜을 배정합니다. 대화에 담당자가 없으면 건너뜁니다.",
         "assignDeal": "딜 할당",
         "noAgentsAvailable": "사용 가능한 상담원이 없습니다.",
         "fieldLabel": "필드",

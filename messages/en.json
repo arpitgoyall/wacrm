@@ -1007,10 +1007,12 @@
         "modeLabel": "Mode",
         "modes": {
           "round_robin": "Round-robin",
-          "specific": "Specific agent"
+          "specific": "Specific agent",
+          "conversation_owner": "Conversation owner"
         },
         "agentLabel": "Agent",
         "roundRobinAgentsLabel": "Round-robin agents",
+        "conversationOwnerHint": "Assigns the deal to the agent the contact's conversation is assigned to. Skips if the conversation has no assignee.",
         "assignDeal": "Assign deal",
         "noAgentsAvailable": "No agents available.",
         "fieldLabel": "Field",

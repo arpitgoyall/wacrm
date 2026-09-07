@@ -622,7 +622,9 @@ export interface CreateDealStepConfig {
 export interface AssignDealStepConfig {
   pipeline_id?: string;
   stage_id?: string;
-  mode: 'specific' | 'round_robin';
+  /** `conversation_owner` routes the deal to whoever the contact's
+   *  conversation is assigned to (skips if it has no assignee). */
+  mode: 'specific' | 'round_robin' | 'conversation_owner';
   agent_id?: string;
   agent_ids?: string[];
 }

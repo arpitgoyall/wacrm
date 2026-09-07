@@ -1518,9 +1518,12 @@ function StepEditor({
             >
               <option value="round_robin">{t("config.modes.round_robin")}</option>
               <option value="specific">{t("config.modes.specific")}</option>
+              <option value="conversation_owner">
+                {t("config.modes.conversation_owner")}
+              </option>
             </select>
           </FieldBlock>
-          {cfg.mode === "specific" ? (
+          {cfg.mode === "specific" && (
             <FieldBlock label={t("config.agentLabel")}>
               <AgentSelect
                 value={(cfg.agent_id as string) ?? ""}
@@ -1528,7 +1531,8 @@ function StepEditor({
                 t={t}
               />
             </FieldBlock>
-          ) : (
+          )}
+          {(cfg.mode ?? "round_robin") === "round_robin" && (
             <FieldBlock label={t("config.roundRobinAgentsLabel")}>
               <AgentMultiSelect
                 values={Array.isArray(cfg.agent_ids) ? (cfg.agent_ids as string[]) : []}
@@ -1536,6 +1540,11 @@ function StepEditor({
                 t={t}
               />
             </FieldBlock>
+          )}
+          {cfg.mode === "conversation_owner" && (
+            <p className="text-xs text-muted-foreground">
+              {t("config.conversationOwnerHint")}
+            </p>
           )}
         </>
       )

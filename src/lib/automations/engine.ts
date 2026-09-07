@@ -880,6 +880,25 @@ async function resolveAssignmentAgent(
 ): Promise<string | undefined> {
   if (cfg.mode === 'specific') return cfg.agent_id
 
+  // Route to whoever currently owns the contact's conversation.
+  // `conversations.assigned_agent_id` is keyed by auth user_id — the same
+  // shape this function returns for the other modes (the assign_deal /
+  // assign_conversation callers translate to profiles.id where needed).
+  if (cfg.mode === 'conversation_owner') {
+    let convQuery = supabaseAdmin()
+      .from('conversations')
+      .select('assigned_agent_id')
+      .eq('account_id', args.automation.account_id)
+    convQuery = args.context.conversation_id
+      ? convQuery.eq('id', args.context.conversation_id)
+      : convQuery.eq('contact_id', args.contactId ?? '')
+    const { data: conv } = await convQuery.maybeSingle()
+    return (
+      (conv as { assigned_agent_id: string | null } | null)?.assigned_agent_id ??
+      undefined
+    )
+  }
+
   // Cache round-robin results per agent pool, not globally per execution —
   // two round_robin steps in the same run with different agent_ids pools
   // must resolve independently. Steps sharing a pool (including the "any
