@@ -1839,7 +1839,7 @@
       "cpl": "CPL",
       "group": "Name",
       "ads": "Ads",
-      "flow": "Flow"
+      "route": "Route to"
     },
     "empty": {
       "title": "No CTWA ad leads yet",
@@ -1871,7 +1871,9 @@
       "none": "— None —",
       "saved": "Flow linked to this ad",
       "cleared": "Flow link removed",
-      "error": "Couldn't update the flow link"
+      "error": "Couldn't update the flow link",
+      "flows": "Flows",
+      "automations": "Automations"
     }
   }
 }

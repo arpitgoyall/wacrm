@@ -7,9 +7,9 @@ import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
-import { runAutomationsForTrigger } from '@/lib/automations/engine'
+import { runAutomationsForTrigger, runAutomationById } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
-import { resolveBoundFlow } from '@/lib/ads/bindings'
+import { resolveAdBinding } from '@/lib/ads/bindings'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import {
@@ -779,18 +779,22 @@ async function processMessage(
     await recordCtwaAd(accountId, message.referral)
   }
 
-  // Ad → Flow binding (migration 054). When this inbound came from a
-  // CTWA ad that's bound to a Flow, resolve it now and hand it to the
-  // Flows engine below — it starts that flow instead of trigger-matching
-  // (a binding beats `first_inbound_message`). Best-effort; null when
-  // there's no referral or no binding.
+  // Ad → Flow / Automation binding (migrations 054 + 055). When this
+  // inbound came from a CTWA ad with a binding, resolve its target now.
+  // A flow target is handed to the Flows engine below (it starts that
+  // flow ahead of trigger matching). An automation target runs after
+  // the automation-trigger dispatch. Best-effort; null when there's no
+  // referral or no binding.
   let boundFlowId: string | null = null
+  let boundAutomationId: string | null = null
   if (message.referral?.source_id) {
-    boundFlowId = await resolveBoundFlow(
+    const binding = await resolveAdBinding(
       supabaseAdmin(),
       accountId,
       message.referral.source_id,
     )
+    boundFlowId = binding?.flow_id ?? null
+    boundAutomationId = binding?.automation_id ?? null
   }
 
   // Find or create conversation
@@ -1065,6 +1069,23 @@ async function processMessage(
         interactive_reply_id: interactiveReplyId ?? undefined,
       },
     }).catch((err) => console.error('[automations] dispatch failed:', err))
+  }
+
+  // Automation explicitly bound to this ad / campaign (migration 055).
+  // Runs regardless of whether a flow consumed the message — the
+  // binding is deliberate routing config, not a content trigger.
+  if (boundAutomationId) {
+    await runAutomationById({
+      automationId: boundAutomationId,
+      accountId,
+      contactId: contactRecord.id,
+      context: {
+        message_text: inboundText,
+        conversation_id: conversation.id,
+      },
+    }).catch((err) =>
+      console.error('[automations] ad-bound dispatch failed:', err),
+    )
   }
 
   // AI auto-reply. Runs only for plain-text inbound the deterministic

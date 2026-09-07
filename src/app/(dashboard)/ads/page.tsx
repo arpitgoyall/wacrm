@@ -30,7 +30,7 @@ import {
   type AdPerformanceRow,
   type AdGroupBy,
   type AdBindingRow,
-  type AdFlowOption,
+  type AdRouteOption,
 } from '@/lib/ads/performance';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -44,6 +44,27 @@ function formatPct(n: number): string {
 
 function formatRoas(n: number | null): string {
   return n == null ? '—' : `${n.toFixed(2)}×`;
+}
+
+type RouteTarget = { flow_id: string | null; automation_id: string | null };
+
+/** Binding row → the `<select>` value string. */
+function routeValue(b?: {
+  flow_id: string | null;
+  automation_id: string | null;
+}): string {
+  if (b?.flow_id) return `flow:${b.flow_id}`;
+  if (b?.automation_id) return `auto:${b.automation_id}`;
+  return '';
+}
+
+/** `<select>` value string → a binding target. */
+function parseRoute(v: string): RouteTarget {
+  if (v.startsWith('flow:'))
+    return { flow_id: v.slice(5), automation_id: null };
+  if (v.startsWith('auto:'))
+    return { flow_id: null, automation_id: v.slice(5) };
+  return { flow_id: null, automation_id: null };
 }
 
 function timeAgo(iso: string | null): string | null {
@@ -117,15 +138,21 @@ export default function AdsPage() {
     );
   }
 
-  async function setBinding(matchValue: string, flowId: string) {
+  async function setBinding(
+    matchType: 'ad' | 'campaign',
+    matchValue: string,
+    target: { flow_id: string | null; automation_id: string | null }
+  ) {
+    const hasTarget = Boolean(target.flow_id || target.automation_id);
     try {
       const res = await fetch('/api/ads/bindings', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          match_type: 'ad',
+          match_type: matchType,
           match_value: matchValue,
-          flow_id: flowId || null,
+          flow_id: target.flow_id,
+          automation_id: target.automation_id,
         }),
       });
       if (!res.ok) {
@@ -135,19 +162,19 @@ export default function AdsPage() {
       setData((prev) => {
         if (!prev) return prev;
         const rest = prev.bindings.filter(
-          (b) => !(b.match_type === 'ad' && b.match_value === matchValue)
+          (b) => !(b.match_type === matchType && b.match_value === matchValue)
         );
         return {
           ...prev,
-          bindings: flowId
+          bindings: hasTarget
             ? [
                 ...rest,
-                { match_type: 'ad', match_value: matchValue, flow_id: flowId },
+                { match_type: matchType, match_value: matchValue, ...target },
               ]
             : rest,
         };
       });
-      toast.success(flowId ? t('bind.saved') : t('bind.cleared'));
+      toast.success(hasTarget ? t('bind.saved') : t('bind.cleared'));
     } catch (err) {
       console.error('[ads] bind failed:', err);
       toast.error(t('bind.error'));
@@ -173,7 +200,7 @@ export default function AdsPage() {
     );
   }
 
-  const { rows, summary, sync, flows, bindings } = data;
+  const { rows, summary, sync, flows, automations, bindings } = data;
   const hasSpend = summary.totalSpend > 0;
   const lastSynced = timeAgo(sync.syncedAt);
 
@@ -317,6 +344,7 @@ export default function AdsPage() {
               canRename={canManage}
               onRenamed={applyRename}
               flows={flows}
+              automations={automations}
               bindings={bindings}
               canBind={canManage}
               onBind={setBinding}
@@ -325,8 +353,14 @@ export default function AdsPage() {
           ) : (
             <GroupTable
               rows={groupAdPerformance(rows, groupBy)}
+              groupBy={groupBy}
               currency={defaultCurrency}
               hasSpend={hasSpend}
+              flows={flows}
+              automations={automations}
+              bindings={bindings}
+              canBind={canManage}
+              onBind={setBinding}
               t={t}
             />
           )}
@@ -387,6 +421,58 @@ function money(v: number, currency: string): string {
 
 type T = ReturnType<typeof useTranslations>;
 
+type BindFn = (
+  matchType: 'ad' | 'campaign',
+  matchValue: string,
+  target: RouteTarget
+) => void;
+
+function RoutePicker({
+  value,
+  flows,
+  automations,
+  disabled,
+  onChange,
+  t,
+}: {
+  value: string;
+  flows: AdRouteOption[];
+  automations: AdRouteOption[];
+  disabled: boolean;
+  onChange: (v: string) => void;
+  t: T;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      aria-label={t('table.route')}
+      className="border-border bg-background max-w-[180px] truncate rounded-md border px-2 py-1 text-xs outline-none disabled:opacity-60"
+    >
+      <option value="">{t('bind.none')}</option>
+      {flows.length > 0 && (
+        <optgroup label={t('bind.flows')}>
+          {flows.map((f) => (
+            <option key={f.id} value={`flow:${f.id}`}>
+              {f.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {automations.length > 0 && (
+        <optgroup label={t('bind.automations')}>
+          {automations.map((a) => (
+            <option key={a.id} value={`auto:${a.id}`}>
+              {a.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </select>
+  );
+}
+
 function AdTable({
   rows,
   currency,
@@ -394,6 +480,7 @@ function AdTable({
   canRename,
   onRenamed,
   flows,
+  automations,
   bindings,
   canBind,
   onBind,
@@ -404,26 +491,25 @@ function AdTable({
   hasSpend: boolean;
   canRename: boolean;
   onRenamed: (sourceId: string, label: string | null) => void;
-  flows: AdFlowOption[];
+  flows: AdRouteOption[];
+  automations: AdRouteOption[];
   bindings: AdBindingRow[];
   canBind: boolean;
-  onBind: (matchValue: string, flowId: string) => void;
+  onBind: BindFn;
   t: T;
 }) {
-  const showFlow = flows.length > 0;
-  const boundFlow = new Map(
-    bindings
-      .filter((b) => b.match_type === 'ad')
-      .map((b) => [b.match_value, b.flow_id])
+  const showRoute = flows.length > 0 || automations.length > 0;
+  const boundByAd = new Map(
+    bindings.filter((b) => b.match_type === 'ad').map((b) => [b.match_value, b])
   );
   return (
     <div className="border-border bg-card overflow-x-auto rounded-xl border">
-      <table className="w-full min-w-[820px] text-sm">
+      <table className="w-full min-w-[860px] text-sm">
         <thead>
           <tr className="border-border text-muted-foreground border-b text-[11px] font-medium tracking-wider uppercase">
             <Th first>{t('table.ad')}</Th>
-            {showFlow && (
-              <th className="px-3 py-3 text-left">{t('table.flow')}</th>
+            {showRoute && (
+              <th className="px-3 py-3 text-left">{t('table.route')}</th>
             )}
             <Th>{t('table.leads')}</Th>
             <Th>{t('table.deals')}</Th>
@@ -444,11 +530,12 @@ function AdTable({
               hasSpend={hasSpend}
               canRename={canRename && row.id !== null}
               onRenamed={(label) => onRenamed(row.source_id, label)}
-              showFlow={showFlow}
+              showRoute={showRoute}
               flows={flows}
-              boundFlowId={boundFlow.get(row.source_id) ?? ''}
+              automations={automations}
+              routeValue={routeValue(boundByAd.get(row.source_id))}
               canBind={canBind}
-              onBind={onBind}
+              onPick={(v) => onBind('ad', row.source_id, parseRoute(v))}
               t={t}
             />
           ))}
@@ -460,21 +547,43 @@ function AdTable({
 
 function GroupTable({
   rows,
+  groupBy,
   currency,
   hasSpend,
+  flows,
+  automations,
+  bindings,
+  canBind,
+  onBind,
   t,
 }: {
   rows: ReturnType<typeof groupAdPerformance>;
+  groupBy: AdGroupBy;
   currency: string;
   hasSpend: boolean;
+  flows: AdRouteOption[];
+  automations: AdRouteOption[];
+  bindings: AdBindingRow[];
+  canBind: boolean;
+  onBind: BindFn;
   t: T;
 }) {
+  const showRoute =
+    groupBy === 'campaign' && (flows.length > 0 || automations.length > 0);
+  const boundByCampaign = new Map(
+    bindings
+      .filter((b) => b.match_type === 'campaign')
+      .map((b) => [b.match_value, b])
+  );
   return (
     <div className="border-border bg-card overflow-x-auto rounded-xl border">
       <table className="w-full min-w-[760px] text-sm">
         <thead>
           <tr className="border-border text-muted-foreground border-b text-[11px] font-medium tracking-wider uppercase">
             <Th first>{t('table.group')}</Th>
+            {showRoute && (
+              <th className="px-3 py-3 text-left">{t('table.route')}</th>
+            )}
             <Th>{t('table.ads')}</Th>
             <Th>{t('table.leads')}</Th>
             <Th>{t('table.deals')}</Th>
@@ -492,6 +601,22 @@ function GroupTable({
               className="border-border/60 hover:bg-muted/30 border-b last:border-0"
             >
               <td className="truncate px-4 py-3 font-medium">{g.name}</td>
+              {showRoute && (
+                <td className="px-3 py-3">
+                  {g.key === '__unassigned__' ? (
+                    <span className="text-muted-foreground text-xs">—</span>
+                  ) : (
+                    <RoutePicker
+                      value={routeValue(boundByCampaign.get(g.key))}
+                      flows={flows}
+                      automations={automations}
+                      disabled={!canBind}
+                      onChange={(v) => onBind('campaign', g.key, parseRoute(v))}
+                      t={t}
+                    />
+                  )}
+                </td>
+              )}
               <td className="px-3 py-3 text-right tabular-nums">{g.ads}</td>
               <td className="px-3 py-3 text-right tabular-nums">
                 {g.leads.toLocaleString()}
@@ -532,11 +657,12 @@ function AdRow({
   hasSpend,
   canRename,
   onRenamed,
-  showFlow,
+  showRoute,
   flows,
-  boundFlowId,
+  automations,
+  routeValue: routeVal,
   canBind,
-  onBind,
+  onPick,
   t,
 }: {
   row: AdPerformanceRow;
@@ -544,11 +670,12 @@ function AdRow({
   hasSpend: boolean;
   canRename: boolean;
   onRenamed: (label: string | null) => void;
-  showFlow: boolean;
-  flows: AdFlowOption[];
-  boundFlowId: string;
+  showRoute: boolean;
+  flows: AdRouteOption[];
+  automations: AdRouteOption[];
+  routeValue: string;
   canBind: boolean;
-  onBind: (matchValue: string, flowId: string) => void;
+  onPick: (v: string) => void;
   t: T;
 }) {
   const [editing, setEditing] = useState(false);
@@ -674,22 +801,16 @@ function AdRow({
           </div>
         )}
       </td>
-      {showFlow && (
+      {showRoute && (
         <td className="px-3 py-3">
-          <select
-            value={boundFlowId}
-            onChange={(e) => onBind(row.source_id, e.target.value)}
+          <RoutePicker
+            value={routeVal}
+            flows={flows}
+            automations={automations}
             disabled={!canBind}
-            aria-label={t('table.flow')}
-            className="border-border bg-background max-w-[170px] truncate rounded-md border px-2 py-1 text-xs outline-none disabled:opacity-60"
-          >
-            <option value="">{t('bind.none')}</option>
-            {flows.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.name}
-              </option>
-            ))}
-          </select>
+            onChange={onPick}
+            t={t}
+          />
         </td>
       )}
       <td className="px-3 py-3 text-right tabular-nums">

@@ -413,25 +413,32 @@ export interface AdSyncMeta {
   error: string | null;
 }
 
-/** Active flows an ad can be bound to (migration 054). */
-export interface AdFlowOption {
+/** An active flow or automation an ad can be bound to (migrations
+ *  054 / 055). */
+export interface AdRouteOption {
   id: string;
   name: string;
 }
 
-/** One row of `ctwa_ad_bindings`. */
+/** Back-compat alias — flows and automations share the {id,name} shape. */
+export type AdFlowOption = AdRouteOption;
+
+/** One row of `ctwa_ad_bindings`. Exactly one of `flow_id` /
+ *  `automation_id` is set. */
 export interface AdBindingRow {
   match_type: 'ad' | 'campaign';
   match_value: string;
-  flow_id: string;
+  flow_id: string | null;
+  automation_id: string | null;
 }
 
 export interface AdPerformanceResult extends AdPerformance {
   sync: AdSyncMeta;
-  /** Active flows, for the per-ad "Flow" picker. Empty when the account
-   *  has no active flows. */
-  flows: AdFlowOption[];
-  /** Current ad/campaign → flow bindings. */
+  /** Active flows, for the per-ad routing picker. */
+  flows: AdRouteOption[];
+  /** Active automations, for the per-ad routing picker. */
+  automations: AdRouteOption[];
+  /** Current ad/campaign → flow/automation bindings. */
   bindings: AdBindingRow[];
 }
 
@@ -456,6 +463,7 @@ export async function loadAdPerformance(
     adsetsRes,
     cfgRes,
     flowsRes,
+    automationsRes,
     bindingsRes,
   ] = await Promise.all([
     db
@@ -487,8 +495,13 @@ export async function loadAdPerformance(
       .eq('status', 'active')
       .order('name', { ascending: true }),
     db
+      .from('automations')
+      .select('id, name')
+      .eq('is_active', true)
+      .order('name', { ascending: true }),
+    db
       .from('ctwa_ad_bindings')
-      .select('match_type, match_value, flow_id')
+      .select('match_type, match_value, flow_id, automation_id')
       .eq('is_active', true),
   ]);
 
@@ -524,7 +537,12 @@ export async function loadAdPerformance(
     ad_sync_error: string | null;
   } | null;
 
-  const flows = flowsRes.error ? [] : ((flowsRes.data ?? []) as AdFlowOption[]);
+  const flows = flowsRes.error
+    ? []
+    : ((flowsRes.data ?? []) as AdRouteOption[]);
+  const automations = automationsRes.error
+    ? []
+    : ((automationsRes.data ?? []) as AdRouteOption[]);
   const bindings = bindingsRes.error
     ? []
     : ((bindingsRes.data ?? []) as AdBindingRow[]);
@@ -539,6 +557,7 @@ export async function loadAdPerformance(
       error: cfg?.ad_sync_error ?? null,
     },
     flows,
+    automations,
     bindings,
   };
 }

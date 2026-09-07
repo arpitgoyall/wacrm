@@ -138,6 +138,64 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
 }
 
 /**
+ * Run ONE automation by id for a contact, bypassing trigger matching —
+ * the caller has already decided it should fire (a CTWA ad → automation
+ * binding, migration 055). Ownership-checked like
+ * `runAutomationsForTrigger`; never throws.
+ */
+export async function runAutomationById(input: {
+  automationId: string
+  accountId: string
+  contactId?: string | null
+  context?: AutomationContext
+}): Promise<void> {
+  try {
+    const db = supabaseAdmin()
+
+    if (input.contactId) {
+      const { data: owned, error: ownErr } = await db
+        .from('contacts')
+        .select('id')
+        .eq('id', input.contactId)
+        .eq('account_id', input.accountId)
+        .maybeSingle()
+      if (ownErr) {
+        console.error('[automations] runById ownership check failed:', ownErr)
+        return
+      }
+      if (!owned) {
+        console.warn('[automations] runById: contact not in account', input.contactId)
+        return
+      }
+    }
+
+    const { data: automation, error } = await db
+      .from('automations')
+      .select('*')
+      .eq('id', input.automationId)
+      .eq('account_id', input.accountId)
+      .eq('is_active', true)
+      .maybeSingle()
+    if (error) {
+      console.error('[automations] runById fetch failed:', error)
+      return
+    }
+    if (!automation) return
+
+    await executeAutomation(automation as Automation, {
+      accountId: input.accountId,
+      // Not a real trigger — the binding is. Stored verbatim in
+      // automation_logs.trigger_event (a free-text column).
+      triggerType: 'ad_binding' as AutomationTriggerType,
+      contactId: input.contactId ?? null,
+      context: input.context,
+    })
+  } catch (err) {
+    console.error('[automations] runAutomationById failed:', err)
+  }
+}
+
+/**
  * Resume a run that was parked at a wait step. Called from the cron
  * endpoint after it grabs a due `automation_pending_executions` row.
  */
