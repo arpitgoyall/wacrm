@@ -711,11 +711,15 @@ async function recordCtwaClickEvent(
  * `on_notification_created` trigger fans it out to their devices via
  * web push; the in-app realtime listener handles the tab-open case.
  *
- * De-duped: skipped while an unread `new_message` notification for
- * this (agent, conversation) already exists, so a burst of replies
- * produces a single standing ping until the agent reads the thread.
+ * Rate-limited, not one-shot: a fresh ping fires at most once per
+ * NEW_MESSAGE_NOTIFY_COOLDOWN_MS, so a multi-line burst collapses into
+ * one notification but a follow-up after a lull pings again. Each new
+ * ping supersedes the prior unread one for this (agent, conversation)
+ * so the bell shows one entry per active chat, not one per message.
  * Best-effort — never blocks inbound processing.
  */
+const NEW_MESSAGE_NOTIFY_COOLDOWN_MS = 30_000
+
 async function recordAssignedMessageNotification(
   accountId: string,
   conversation: { id: string; assigned_agent_id?: string | null },
@@ -729,13 +733,37 @@ async function recordAssignedMessageNotification(
     const db = supabaseAdmin()
     const { data: existing } = await db
       .from('notifications')
-      .select('id')
+      .select('id, created_at')
       .eq('user_id', agentId)
       .eq('conversation_id', conversation.id)
       .eq('type', 'new_message')
       .is('read_at', null)
+      .order('created_at', { ascending: false })
       .limit(1)
-    if (existing && existing.length > 0) return
+
+    const last = existing?.[0] as
+      | { id: string; created_at: string }
+      | undefined
+    if (
+      last &&
+      Date.now() - new Date(last.created_at).getTime() <
+        NEW_MESSAGE_NOTIFY_COOLDOWN_MS
+    ) {
+      // Still inside the cooldown — the standing ping covers this one.
+      return
+    }
+
+    // Retire the previous unread ping(s) for this chat so the bell
+    // badge counts conversations-with-activity, not raw messages.
+    if (last) {
+      await db
+        .from('notifications')
+        .update({ read_at: new Date().toISOString() })
+        .eq('user_id', agentId)
+        .eq('conversation_id', conversation.id)
+        .eq('type', 'new_message')
+        .is('read_at', null)
+    }
 
     const who = contact.name?.trim() || contact.phone || 'a contact'
     const { error } = await db.from('notifications').insert({

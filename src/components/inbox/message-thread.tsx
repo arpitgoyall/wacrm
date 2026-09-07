@@ -457,6 +457,25 @@ export function MessageThread({
       });
   }, [conversationId, hasUnread]);
 
+  // Viewing a thread clears its notification-centre entries for this
+  // user (new message / new conversation), so the bell badge tracks
+  // unseen activity — and re-arms the webhook's per-chat ping cooldown
+  // for the next time you're away.
+  useEffect(() => {
+    if (!conversationId || !user?.id) return;
+    const supabase = createClient();
+    supabase
+      .from("notifications")
+      .update({ read_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .eq("conversation_id", conversationId)
+      .in("type", ["new_message", "new_conversation"])
+      .is("read_at", null)
+      .then(({ error }) => {
+        if (error) console.error("Failed to clear notifications:", error);
+      });
+  }, [conversationId, user?.id, hasUnread]);
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
