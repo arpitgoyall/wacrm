@@ -59,6 +59,7 @@ export function WhatsAppConfig() {
   const [resetting, setResetting] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [showCapiToken, setShowCapiToken] = useState(false);
+  const [showAdToken, setShowAdToken] = useState(false);
   const [config, setConfig] = useState<WhatsAppConfigType | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('unknown');
   const [resetReason, setResetReason] = useState<ResetReason>(null);
@@ -88,6 +89,12 @@ export function WhatsAppConfig() {
   const [ctwaDatasetId, setCtwaDatasetId] = useState('');
   const [ctwaCapiToken, setCtwaCapiToken] = useState('');
   const [capiTokenSet, setCapiTokenSet] = useState(false);
+  // Marketing API ad-account connection (Phase 2). Token is write-only
+  // from the client, same as the CAPI token above.
+  const [adAccountId, setAdAccountId] = useState('');
+  const [adInsightsToken, setAdInsightsToken] = useState('');
+  const [adInsightsTokenSet, setAdInsightsTokenSet] = useState(false);
+  const [adSyncEnabled, setAdSyncEnabled] = useState(false);
 
   // Inbound-media mirror (issue #466). Unlike everything else on this
   // page it is NOT part of handleSave: that path insists on re-entering
@@ -154,6 +161,10 @@ export function WhatsAppConfig() {
         setCtwaDatasetId(data.ctwa_dataset_id || '');
         setCtwaCapiToken('');
         setCapiTokenSet(Boolean(data.ctwa_capi_token));
+        setAdAccountId(data.ad_account_id || '');
+        setAdInsightsToken('');
+        setAdInsightsTokenSet(Boolean(data.ad_insights_token));
+        setAdSyncEnabled(data.ad_sync_enabled === true);
         // Undefined on a row read before migration 039 — treat that as
         // on, matching the webhook's own default.
         setMirrorMedia(data.mirror_inbound_media !== false);
@@ -169,6 +180,10 @@ export function WhatsAppConfig() {
         setCtwaDatasetId('');
         setCtwaCapiToken('');
         setCapiTokenSet(false);
+        setAdAccountId('');
+        setAdInsightsToken('');
+        setAdInsightsTokenSet(false);
+        setAdSyncEnabled(false);
         setMirrorMedia(true);
       }
       // Clear any stale probe result when reloading the row.
@@ -277,6 +292,14 @@ export function WhatsAppConfig() {
       };
       if (ctwaCapiToken.trim()) {
         payload.ctwa_capi_token = ctwaCapiToken.trim();
+      }
+
+      // Marketing API ad-account connection (Phase 2). Ad account id is
+      // plain text; the token is only sent when the user typed a new one.
+      payload.ad_account_id = adAccountId.trim() || null;
+      payload.ad_sync_enabled = adSyncEnabled;
+      if (adInsightsToken.trim()) {
+        payload.ad_insights_token = adInsightsToken.trim();
       }
 
       // Only send the access token when the user actually re-entered it.
@@ -757,6 +780,51 @@ export function WhatsAppConfig() {
               </div>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 {t('ctwaHint')}
+              </p>
+            </div>
+
+            <div className="space-y-2 border-t border-border pt-4">
+              <Label className="text-muted-foreground">
+                {t('adAccountId')}
+                <span className="ml-1 text-muted-foreground">{t('optional')}</span>
+              </Label>
+              <Input
+                placeholder={t('adAccountIdPlaceholder')}
+                value={adAccountId}
+                onChange={(e) => setAdAccountId(e.target.value)}
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+              />
+              <Label className="text-muted-foreground">{t('adInsightsToken')}</Label>
+              <div className="relative">
+                <Input
+                  type={showAdToken ? 'text' : 'password'}
+                  placeholder={
+                    adInsightsTokenSet
+                      ? t('tokenHidden')
+                      : t('adInsightsTokenPlaceholder')
+                  }
+                  value={adInsightsToken}
+                  onChange={(e) => setAdInsightsToken(e.target.value)}
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowAdToken(!showAdToken)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showAdToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <Label className="text-muted-foreground">{t('adSyncEnabled')}</Label>
+                <Switch
+                  checked={adSyncEnabled}
+                  onCheckedChange={(v) => setAdSyncEnabled(Boolean(v))}
+                  aria-label={t('adSyncEnabled')}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                {t('adSyncHint')}
               </p>
             </div>
           </CardContent>

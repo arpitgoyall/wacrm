@@ -125,6 +125,15 @@ export interface Contact {
   avatar_url?: string;
   created_at: string;
   updated_at: string;
+  /** Click-to-WhatsApp attribution (last touch). `ctwa_clid` /
+   *  `ctwa_source_id` added in migration 050 (click id + ad id);
+   *  `ctwa_headline` / `ctwa_source_url` added in migration 052 for
+   *  the contact-view "came from this ad" line. All null for organic
+   *  contacts. */
+  ctwa_clid?: string | null;
+  ctwa_source_id?: string | null;
+  ctwa_headline?: string | null;
+  ctwa_source_url?: string | null;
   /** Hydrated by queries that embed `contact_tags(tags(*))` (e.g. the
    *  Inbox conversation list, for tag filtering). Absent otherwise. */
   tags?: Tag[];

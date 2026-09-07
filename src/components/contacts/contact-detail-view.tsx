@@ -39,6 +39,7 @@ import {
   X,
   DollarSign,
   LayoutTemplate,
+  Megaphone,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -429,6 +430,27 @@ export function ContactDetailView({
                         {contact.company}
                       </span>
                     )}
+                    {(contact.ctwa_headline || contact.ctwa_source_url) &&
+                      (contact.ctwa_source_url ? (
+                        <a
+                          href={contact.ctwa_source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1 hover:text-primary transition-colors"
+                          title={contact.ctwa_headline ?? undefined}
+                        >
+                          <Megaphone className="size-3" />
+                          {contact.ctwa_headline || t('fromAd')}
+                        </a>
+                      ) : (
+                        <span
+                          className="flex items-center gap-1"
+                          title={contact.ctwa_headline ?? undefined}
+                        >
+                          <Megaphone className="size-3" />
+                          {contact.ctwa_headline}
+                        </span>
+                      ))}
                   </div>
                 </div>
               </div>

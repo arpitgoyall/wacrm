@@ -662,6 +662,48 @@ async function recordCtwaAd(
   }
 }
 
+/**
+ * Append one row to `ctwa_click_events` (migration 052) for an inbound
+ * that carried an ad referral. The table is write-only — never updated
+ * or deleted — so it preserves the full click journey behind the
+ * last-touch `contacts.ctwa_*` columns.
+ *
+ * Best-effort: a failure must not break inbound processing.
+ */
+async function recordCtwaClickEvent(
+  accountId: string,
+  contactId: string,
+  referral: NonNullable<WhatsAppMessage['referral']>,
+  messageTimestamp: string,
+) {
+  try {
+    // Meta timestamps are unix seconds as a string; guard a bad value
+    // by falling back to now().
+    const secs = Number(messageTimestamp)
+    const occurredAt = Number.isFinite(secs)
+      ? new Date(secs * 1000).toISOString()
+      : new Date().toISOString()
+
+    const { error } = await supabaseAdmin().from('ctwa_click_events').insert({
+      account_id: accountId,
+      contact_id: contactId,
+      ad_id: referral.source_id ?? null,
+      clid: referral.ctwa_clid ?? null,
+      headline: referral.headline ?? null,
+      body: referral.body ?? null,
+      source_url: referral.source_url ?? null,
+      source_type: referral.source_type ?? null,
+      media_type: referral.media_type ?? null,
+      occurred_at: occurredAt,
+    })
+    if (error) {
+      console.error('[webhook] ctwa_click_events insert failed:', error.message)
+    }
+  } catch (err) {
+    console.error('[webhook] recordCtwaClickEvent threw:', err)
+  }
+}
+
 async function processMessage(
   message: WhatsAppMessage,
   contact: { profile: { name: string }; wa_id: string },
@@ -698,14 +740,34 @@ async function processMessage(
   // most recent click. The `send_meta_capi_event` automation step
   // reads `contacts.ctwa_clid` from here.
   if (message.referral?.ctwa_clid || message.referral?.source_id) {
+    const ref = message.referral
+    const contactPatch: Record<string, unknown> = {
+      ctwa_clid: ref.ctwa_clid ?? null,
+      ctwa_source_id: ref.source_id ?? null,
+    }
+    // Creative context (migration 052) — only overwrite when this tap
+    // actually carried it, so a later bare referral doesn't blank the
+    // "came from the '50% off' ad" line in the contact view.
+    if (ref.headline) contactPatch.ctwa_headline = ref.headline
+    if (ref.source_url) contactPatch.ctwa_source_url = ref.source_url
+
     await supabaseAdmin()
       .from('contacts')
-      .update({
-        ctwa_clid: message.referral.ctwa_clid ?? null,
-        ctwa_source_id: message.referral.source_id ?? null,
-      })
+      .update(contactPatch)
       .eq('id', contactRecord.id)
       .eq('account_id', accountId)
+  }
+
+  if (message.referral?.source_id || message.referral?.ctwa_clid) {
+    // Append-only click log (migration 052): one row per ad tap, so
+    // first-touch / multi-touch attribution survives the last-touch
+    // overwrite above. Best-effort — see the helper.
+    await recordCtwaClickEvent(
+      accountId,
+      contactRecord.id,
+      message.referral,
+      message.timestamp,
+    )
   }
 
   // Register / refresh this ad in the CTWA ad registry (migration 051)

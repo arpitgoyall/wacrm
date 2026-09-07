@@ -195,6 +195,11 @@ export async function POST(request: Request) {
       // system-user token; encrypted at rest like access_token.
       ctwa_dataset_id,
       ctwa_capi_token,
+      // Marketing API ad-account connection (Phase 2). `ad_insights_token`
+      // is a system-user token with `ads_read`; encrypted at rest.
+      ad_account_id,
+      ad_insights_token,
+      ad_sync_enabled,
     } = body
 
     // Pre-existing row for this account. Loaded up-front so an update
@@ -304,6 +309,7 @@ export async function POST(request: Request) {
     let encryptedAccessToken: string
     let encryptedVerifyToken: string | null
     let encryptedCapiToken: string | null | undefined
+    let encryptedAdInsightsToken: string | null | undefined
     try {
       encryptedAccessToken = access_token
         ? encrypt(access_token)
@@ -318,6 +324,12 @@ export async function POST(request: Request) {
           ? undefined
           : ctwa_capi_token
             ? encrypt(String(ctwa_capi_token))
+            : null
+      encryptedAdInsightsToken =
+        ad_insights_token === undefined
+          ? undefined
+          : ad_insights_token
+            ? encrypt(String(ad_insights_token))
             : null
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown encryption error'
@@ -424,6 +436,17 @@ export async function POST(request: Request) {
         : {}),
       ...(encryptedCapiToken !== undefined
         ? { ctwa_capi_token: encryptedCapiToken }
+        : {}),
+      // Marketing API ad-account connection (Phase 2). Same
+      // send-only-what-changed rule so an unrelated save doesn't wipe it.
+      ...(ad_account_id !== undefined
+        ? { ad_account_id: ad_account_id ? String(ad_account_id).trim() : null }
+        : {}),
+      ...(encryptedAdInsightsToken !== undefined
+        ? { ad_insights_token: encryptedAdInsightsToken }
+        : {}),
+      ...(ad_sync_enabled !== undefined
+        ? { ad_sync_enabled: Boolean(ad_sync_enabled) }
         : {}),
     }
 

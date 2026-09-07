@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Megaphone,
   Users,
@@ -8,10 +8,12 @@ import {
   Trophy,
   DollarSign,
   Percent,
+  TrendingUp,
   ExternalLink,
   Pencil,
   Check,
   X,
+  RefreshCw,
   Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,7 +25,10 @@ import { useCan } from '@/hooks/use-can';
 import { formatCurrency } from '@/lib/currency';
 import {
   loadAdPerformance,
+  groupAdPerformance,
+  type AdPerformanceResult,
   type AdPerformanceRow,
+  type AdGroupBy,
 } from '@/lib/ads/performance';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -35,18 +40,37 @@ function formatPct(n: number): string {
   return `${Math.round(p)}%`;
 }
 
+function formatRoas(n: number | null): string {
+  return n == null ? '—' : `${n.toFixed(2)}×`;
+}
+
+function timeAgo(iso: string | null): string | null {
+  if (!iso) return null;
+  const secs = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (secs < 60) return 'just now';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
+
+const GROUP_OPTIONS: AdGroupBy[] = ['ad', 'adset', 'campaign'];
+
 export default function AdsPage() {
   const t = useTranslations('Ads');
   const { defaultCurrency } = useAuth();
-  const canRename = useCan('edit-settings');
+  const canManage = useCan('edit-settings');
 
-  const [rows, setRows] = useState<AdPerformanceRow[] | null>(null);
+  const [data, setData] = useState<AdPerformanceResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [groupBy, setGroupBy] = useState<AdGroupBy>('ad');
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(() => {
     loadAdPerformance(createClient())
       .then((res) => {
-        setRows(res.rows);
+        setData(res);
         setError(null);
       })
       .catch((err) => {
@@ -59,25 +83,35 @@ export default function AdsPage() {
     load();
   }, [load]);
 
-  const summary = useMemo(() => {
-    const list = rows ?? [];
-    const totalLeads = list.reduce((s, r) => s + r.leads, 0);
-    const totalWon = list.reduce((s, r) => s + r.won, 0);
-    return {
-      adCount: list.length,
-      totalLeads,
-      totalDeals: list.reduce((s, r) => s + r.deals, 0),
-      totalWon,
-      totalRevenue: list.reduce((s, r) => s + r.revenue, 0),
-      blendedCloseRate: totalLeads > 0 ? totalWon / totalLeads : 0,
-    };
-  }, [rows]);
+  async function syncNow() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const res = await fetch('/api/ads/sync', { method: 'POST' });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || body?.summary?.errors?.length) {
+        throw new Error(body?.summary?.errors?.[0] ?? 'sync failed');
+      }
+      toast.success(t('sync.done'));
+      load();
+    } catch (err) {
+      console.error('[ads] sync failed:', err);
+      toast.error(t('sync.error'));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   function applyRename(sourceId: string, label: string | null) {
-    setRows(
-      (prev) =>
-        prev?.map((r) => (r.source_id === sourceId ? { ...r, label } : r)) ??
-        prev
+    setData((prev) =>
+      prev
+        ? {
+            ...prev,
+            rows: prev.rows.map((r) =>
+              r.source_id === sourceId ? { ...r, label } : r
+            ),
+          }
+        : prev
     );
   }
 
@@ -92,7 +126,7 @@ export default function AdsPage() {
     );
   }
 
-  if (rows === null) {
+  if (data === null) {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="text-primary h-6 w-6 animate-spin" />
@@ -100,15 +134,58 @@ export default function AdsPage() {
     );
   }
 
+  const { rows, summary, sync } = data;
+  const hasSpend = summary.totalSpend > 0;
+  const lastSynced = timeAgo(sync.syncedAt);
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-foreground text-2xl font-bold">{t('title')}</h1>
-        <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-foreground text-2xl font-bold">{t('title')}</h1>
+          <p className="text-muted-foreground mt-1 text-sm">{t('subtitle')}</p>
+        </div>
+        {sync.connected && (
+          <div className="flex items-center gap-3">
+            <span className="text-muted-foreground text-xs">
+              {sync.error
+                ? t('sync.error')
+                : lastSynced
+                  ? t('sync.lastSynced', { time: lastSynced })
+                  : t('sync.never')}
+            </span>
+            {canManage && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={syncNow}
+                disabled={syncing}
+              >
+                {syncing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                {t('sync.now')}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
+      {!sync.enabled && (
+        <p className="border-border bg-card/40 text-muted-foreground rounded-lg border border-dashed px-4 py-3 text-xs">
+          {t('sync.disabled')}
+        </p>
+      )}
+
       {/* Summary tiles */}
-      <div className="border-border bg-card/60 grid grid-cols-2 gap-3 rounded-xl border p-4 sm:grid-cols-3 xl:grid-cols-6">
+      <div
+        className={cn(
+          'border-border bg-card/60 grid grid-cols-2 gap-3 rounded-xl border p-4 sm:grid-cols-3',
+          hasSpend ? 'xl:grid-cols-7' : 'xl:grid-cols-5'
+        )}
+      >
         <SummaryTile
           icon={<Megaphone className="text-muted-foreground h-4 w-4" />}
           label={t('summary.ads')}
@@ -134,11 +211,27 @@ export default function AdsPage() {
           label={t('summary.revenue')}
           value={formatCurrency(summary.totalRevenue, defaultCurrency)}
         />
-        <SummaryTile
-          icon={<Percent className="h-4 w-4 text-emerald-400" />}
-          label={t('summary.closeRate')}
-          value={formatPct(summary.blendedCloseRate)}
-        />
+        {hasSpend && (
+          <SummaryTile
+            icon={<DollarSign className="h-4 w-4 text-amber-400" />}
+            label={t('summary.spend')}
+            value={formatCurrency(summary.totalSpend, defaultCurrency)}
+          />
+        )}
+        {hasSpend && (
+          <SummaryTile
+            icon={<TrendingUp className="h-4 w-4 text-emerald-400" />}
+            label={t('summary.roas')}
+            value={formatRoas(summary.blendedRoas)}
+          />
+        )}
+        {!hasSpend && (
+          <SummaryTile
+            icon={<Percent className="h-4 w-4 text-emerald-400" />}
+            label={t('summary.closeRate')}
+            value={formatPct(summary.blendedCloseRate)}
+          />
+        )}
       </div>
 
       {rows.length === 0 ? (
@@ -154,36 +247,47 @@ export default function AdsPage() {
           </p>
         </div>
       ) : (
-        <div className="border-border bg-card overflow-x-auto rounded-xl border">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead>
-              <tr className="border-border text-muted-foreground border-b text-left text-[11px] font-medium tracking-wider uppercase">
-                <th className="px-4 py-3">{t('table.ad')}</th>
-                <th className="px-3 py-3 text-right">{t('table.leads')}</th>
-                <th className="px-3 py-3 text-right">{t('table.deals')}</th>
-                <th className="px-3 py-3 text-right">{t('table.won')}</th>
-                <th className="px-3 py-3 text-right">{t('table.lost')}</th>
-                <th className="px-3 py-3 text-right">{t('table.revenue')}</th>
-                <th className="px-3 py-3 text-right">{t('table.closeRate')}</th>
-                <th className="px-4 py-3 text-right">
-                  {t('table.revPerLead')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <AdRow
-                  key={row.source_id}
-                  row={row}
-                  currency={defaultCurrency}
-                  canRename={canRename && row.id !== null}
-                  onRenamed={(label) => applyRename(row.source_id, label)}
-                  t={t}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Grouping toggle */}
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-muted-foreground mr-1">
+              {t('groupBy.label')}
+            </span>
+            {GROUP_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => setGroupBy(opt)}
+                className={cn(
+                  'rounded-md px-2.5 py-1 font-medium transition-colors',
+                  groupBy === opt
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                )}
+              >
+                {t(`groupBy.${opt}`)}
+              </button>
+            ))}
+          </div>
+
+          {groupBy === 'ad' ? (
+            <AdTable
+              rows={rows}
+              currency={defaultCurrency}
+              hasSpend={hasSpend}
+              canRename={canManage}
+              onRenamed={applyRename}
+              t={t}
+            />
+          ) : (
+            <GroupTable
+              rows={groupAdPerformance(rows, groupBy)}
+              currency={defaultCurrency}
+              hasSpend={hasSpend}
+              t={t}
+            />
+          )}
+        </>
       )}
 
       <p className="text-muted-foreground text-xs">{t('attributionNote')}</p>
@@ -211,25 +315,177 @@ function SummaryTile({
   );
 }
 
+function Th({
+  children,
+  first,
+  last,
+}: {
+  children: React.ReactNode;
+  first?: boolean;
+  last?: boolean;
+}) {
+  return (
+    <th
+      className={cn(
+        'py-3 text-right',
+        first && 'px-4 text-left',
+        last && 'px-4',
+        !first && !last && 'px-3'
+      )}
+    >
+      {children}
+    </th>
+  );
+}
+
+function money(v: number, currency: string): string {
+  return v > 0 ? formatCurrency(Math.round(v), currency) : '—';
+}
+
+type T = ReturnType<typeof useTranslations>;
+
+function AdTable({
+  rows,
+  currency,
+  hasSpend,
+  canRename,
+  onRenamed,
+  t,
+}: {
+  rows: AdPerformanceRow[];
+  currency: string;
+  hasSpend: boolean;
+  canRename: boolean;
+  onRenamed: (sourceId: string, label: string | null) => void;
+  t: T;
+}) {
+  return (
+    <div className="border-border bg-card overflow-x-auto rounded-xl border">
+      <table className="w-full min-w-[820px] text-sm">
+        <thead>
+          <tr className="border-border text-muted-foreground border-b text-[11px] font-medium tracking-wider uppercase">
+            <Th first>{t('table.ad')}</Th>
+            <Th>{t('table.leads')}</Th>
+            <Th>{t('table.deals')}</Th>
+            <Th>{t('table.won')}</Th>
+            {hasSpend && <Th>{t('table.spend')}</Th>}
+            <Th>{t('table.revenue')}</Th>
+            {hasSpend && <Th>{t('table.roas')}</Th>}
+            {hasSpend && <Th>{t('table.cpl')}</Th>}
+            <Th last>{t('table.closeRate')}</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <AdRow
+              key={row.source_id}
+              row={row}
+              currency={currency}
+              hasSpend={hasSpend}
+              canRename={canRename && row.id !== null}
+              onRenamed={(label) => onRenamed(row.source_id, label)}
+              t={t}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GroupTable({
+  rows,
+  currency,
+  hasSpend,
+  t,
+}: {
+  rows: ReturnType<typeof groupAdPerformance>;
+  currency: string;
+  hasSpend: boolean;
+  t: T;
+}) {
+  return (
+    <div className="border-border bg-card overflow-x-auto rounded-xl border">
+      <table className="w-full min-w-[760px] text-sm">
+        <thead>
+          <tr className="border-border text-muted-foreground border-b text-[11px] font-medium tracking-wider uppercase">
+            <Th first>{t('table.group')}</Th>
+            <Th>{t('table.ads')}</Th>
+            <Th>{t('table.leads')}</Th>
+            <Th>{t('table.deals')}</Th>
+            <Th>{t('table.won')}</Th>
+            {hasSpend && <Th>{t('table.spend')}</Th>}
+            <Th>{t('table.revenue')}</Th>
+            {hasSpend && <Th>{t('table.roas')}</Th>}
+            <Th last>{t('table.closeRate')}</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((g) => (
+            <tr
+              key={g.key}
+              className="border-border/60 hover:bg-muted/30 border-b last:border-0"
+            >
+              <td className="truncate px-4 py-3 font-medium">{g.name}</td>
+              <td className="px-3 py-3 text-right tabular-nums">{g.ads}</td>
+              <td className="px-3 py-3 text-right tabular-nums">
+                {g.leads.toLocaleString()}
+              </td>
+              <td className="text-muted-foreground px-3 py-3 text-right tabular-nums">
+                {g.deals.toLocaleString()}
+              </td>
+              <td className="px-3 py-3 text-right tabular-nums">
+                {g.won.toLocaleString()}
+              </td>
+              {hasSpend && (
+                <td className="px-3 py-3 text-right text-amber-500/90 tabular-nums">
+                  {money(g.spend, currency)}
+                </td>
+              )}
+              <td className="px-3 py-3 text-right font-medium tabular-nums">
+                {formatCurrency(g.revenue, currency)}
+              </td>
+              {hasSpend && (
+                <td className="px-3 py-3 text-right tabular-nums">
+                  {formatRoas(g.roas)}
+                </td>
+              )}
+              <td className="px-4 py-3 text-right tabular-nums">
+                {formatPct(g.closeRate)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function AdRow({
   row,
   currency,
+  hasSpend,
   canRename,
   onRenamed,
   t,
 }: {
   row: AdPerformanceRow;
   currency: string;
+  hasSpend: boolean;
   canRename: boolean;
   onRenamed: (label: string | null) => void;
-  t: ReturnType<typeof useTranslations>;
+  t: T;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(row.label ?? '');
   const [saving, setSaving] = useState(false);
 
-  const displayName = row.label || row.headline || row.source_id;
-  const showId = displayName !== row.source_id;
+  const displayName =
+    row.label || row.metaName || row.headline || row.source_id;
+  const secondary =
+    displayName !== row.source_id
+      ? row.campaignName || row.source_id
+      : row.campaignName;
 
   async function save() {
     if (!row.id || saving) return;
@@ -321,9 +577,9 @@ function AdRow({
                   </a>
                 )}
               </div>
-              {showId && (
+              {secondary && (
                 <span className="text-muted-foreground block truncate text-[11px]">
-                  {row.source_id}
+                  {secondary}
                 </span>
               )}
             </div>
@@ -352,19 +608,26 @@ function AdRow({
       <td className="px-3 py-3 text-right tabular-nums">
         {row.won.toLocaleString()}
       </td>
-      <td className="text-muted-foreground px-3 py-3 text-right tabular-nums">
-        {row.lost.toLocaleString()}
-      </td>
+      {hasSpend && (
+        <td className="px-3 py-3 text-right text-amber-500/90 tabular-nums">
+          {money(row.spend, currency)}
+        </td>
+      )}
       <td className="px-3 py-3 text-right font-medium tabular-nums">
         {formatCurrency(row.revenue, currency)}
       </td>
-      <td className="px-3 py-3 text-right tabular-nums">
+      {hasSpend && (
+        <td className="px-3 py-3 text-right tabular-nums">
+          {formatRoas(row.roas)}
+        </td>
+      )}
+      {hasSpend && (
+        <td className="text-muted-foreground px-3 py-3 text-right tabular-nums">
+          {row.cpl == null ? '—' : money(row.cpl, currency)}
+        </td>
+      )}
+      <td className="px-4 py-3 text-right tabular-nums">
         {formatPct(row.closeRate)}
-      </td>
-      <td className="text-muted-foreground px-4 py-3 text-right tabular-nums">
-        {row.revenuePerLead > 0
-          ? formatCurrency(Math.round(row.revenuePerLead), currency)
-          : '—'}
       </td>
     </tr>
   );

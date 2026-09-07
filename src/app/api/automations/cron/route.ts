@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
 import { drainDealStageEvents } from '@/lib/automations/deal-stage-cron'
+import { syncMetaAds } from '@/lib/ads/meta-sync-run'
 import { checkCronAuth } from '@/lib/cron-auth'
 
 // The pending-executions + deal-stage loops can each make up to 50
@@ -78,5 +79,10 @@ export async function GET(request: Request) {
   // Deal-stage-change outbox → `deal_stage_changed` automations.
   const dealStageProcessed = await drainDealStageEvents()
 
-  return NextResponse.json({ processed, dealStageProcessed })
+  // Meta Marketing API sync (spend / structure for the Ads dashboard).
+  // Self-throttled per account to ~hourly, so calling it every cron
+  // tick is cheap — most ticks return `accountsSkipped`. Never throws.
+  const adSync = await syncMetaAds()
+
+  return NextResponse.json({ processed, dealStageProcessed, adSync })
 }

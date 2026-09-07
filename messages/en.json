@@ -407,9 +407,9 @@
         "custom": "Custom Fields",
         "deals": "Deals",
         "tags": "Tags",
-      "noTags": "No tags",
-      "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+        "noTags": "No tags",
+        "noDeals": "No deals",
+        "addNotePlaceholder": "Add a note..."
       },
       "actions": {
         "edit": "Edit",
@@ -459,7 +459,8 @@
       "toastCustomFieldsSaved": "Custom fields saved",
       "toastCustomFieldsFailed": "Failed to save custom fields",
       "toastTemplateSent": "Template \"{name}\" sent",
-      "toastTemplateFailed": "Failed to send template: {reason}"
+      "toastTemplateFailed": "Failed to send template: {reason}",
+      "fromAd": "From a WhatsApp ad"
     },
     "importModal": {
       "title": "Import Contacts",
@@ -1420,13 +1421,11 @@
       "deleteLocallyAria": "Delete template locally",
       "deleteMetaLocallyTitle": "Delete from Meta and locally",
       "deleteLocallyTitle": "Delete locally",
-      
       "dialogEditTitle": "Edit Message Template",
       "dialogNewTitle": "New Message Template",
       "dialogEditDesc": "Save your changes to re-submit to Meta. Status will flip back to PENDING during review.",
       "dialogNewDesc": "Build a template and submit it to Meta for approval. Once approved, you can use it in broadcasts and the inbox.",
       "authWarning": "AUTHENTICATION templates have a fixed body + OTP button shape that needs a different builder. Create them in Meta WhatsApp Manager for now and use <bold>Sync from Meta</bold> to bring them in.",
-      
       "templateName": "Template Name",
       "namePlaceholder": "e.g. order_confirmation",
       "nameFixed": "Name is fixed once a template exists on Meta — create a new template to change it.",
@@ -1435,7 +1434,6 @@
       "language": "Language",
       "langFixed": "Language is fixed once a template exists on Meta.",
       "langHint": "Must match the exact code on Meta — <code>en_US</code> and <code>en</code> are distinct.",
-      
       "header": "Header",
       "headerNone": "None",
       "headerText": "Text",
@@ -1445,7 +1443,6 @@
       "headerTextPlaceholder": "Header text (max 60 chars, optional {{1}})",
       "headerSampleAria": "Sample value for header variable",
       "headerSamplePlaceholder": "Sample value for {{1}} (required for Meta review)",
-      
       "uploadImage": "Upload image",
       "uploadHint": "JPEG or PNG, ≤5 MB",
       "mediaUrlPlaceholder": "https://… (or paste a public {format} link)",
@@ -1453,17 +1450,14 @@
       "mediaHint": "Must be a publicly accessible HTTPS link. Meta fetches it once during review, so it needs to stay live for ~24 hrs.",
       "videoHint": " Recommended: MP4 / 3GPP, ≤16 MB, ≤60 seconds.",
       "documentHint": " Recommended: PDF, ≤100 MB.",
-      
       "bodyText": "Body Text",
       "bodyPlaceholder": "Hello {{1}}, your order {{2}} is confirmed.",
       "bodyHint": "Use {{1}}, {{2}} for variables (must be contiguous starting at {{1}}).",
       "sampleValues": "Sample values (Meta uses these to review your template)",
       "sampleAria": "Sample value for body variable {var}",
       "samplePlaceholder": "Sample for {var}",
-      
       "footer": "Footer (optional)",
       "footerPlaceholder": "Optional footer text (max 60 chars)",
-      
       "buttons": "Buttons (optional)",
       "addButton": "Add Button",
       "buttonsLimit": "Up to {max} buttons. QUICK_REPLY buttons must come before URL / phone / copy-code buttons.",
@@ -1476,19 +1470,16 @@
       "urlSamplePlaceholder": "Example value for {{1}} (required when URL has a variable)",
       "phonePlaceholder": "+15551234567",
       "codePlaceholder": "Example code (e.g. SUMMER20)",
-      
       "cancel": "Cancel",
       "saving": "Saving…",
       "submitting": "Submitting…",
       "saveResubmit": "Save & Resubmit",
       "submitApproval": "Submit for Approval",
-      
       "deleteDialogTitle": "Delete template?",
       "deleteMetaDesc": "\"{name}\" will be deleted from Meta and from wacrm. Active broadcasts using this template will start failing on their next send. This can't be undone.",
       "deleteLocalDesc": "\"{name}\" will be deleted from wacrm. It was never submitted to Meta, so no remote cleanup is needed.",
       "deleting": "Deleting…",
       "delete": "Delete",
-      
       "toastLoadFailed": "Failed to load templates",
       "toastSubmitFailed": "Failed to submit",
       "toastSubmitEditSuccess": "Edit submitted — Meta typically reviews within 24 hours.",
@@ -1597,7 +1588,13 @@
       "step5_2": "Copy the <strong class=\"text-foreground\">Dataset ID</strong> and paste it as the Conversions API dataset ID above",
       "step5_3": "In the dataset's Settings > Conversions API, generate a <strong class=\"text-foreground\">system-user access token</strong> linked to this WABA",
       "step5_4": "Paste the token as the Conversions API access token above — this lets a \"Send Meta Conversion\" automation step report closed deals back to Meta for Click-to-WhatsApp ad attribution",
-      "metaDocs": "Meta WhatsApp API Documentation"
+      "metaDocs": "Meta WhatsApp API Documentation",
+      "adAccountId": "Meta ad account ID",
+      "adAccountIdPlaceholder": "act_123456789012345",
+      "adInsightsToken": "Marketing API token",
+      "adInsightsTokenPlaceholder": "System user token with ads_read",
+      "adSyncEnabled": "Sync ad spend hourly",
+      "adSyncHint": "Pulls campaign / ad-set / ad structure and daily spend from the Meta Marketing API so the Ads page can show ROAS, CPL and cost per deal. Needs a System User token with the ads_read permission on this ad account."
     },
     "sections": {
       "overview": "Overview",
@@ -1644,7 +1641,6 @@
       "profileSaved": "Profile saved",
       "emailChangeFailed": "Email change failed: {message}",
       "profileSavedEmailCheck": "Profile saved — check your email to confirm the address change",
-      
       "passwordTitle": "Password",
       "passwordDesc": "Use at least {min} characters. You will stay signed in on this device after changing it.",
       "currentPassword": "Current password",
@@ -1658,7 +1654,6 @@
       "currentPasswordIncorrect": "Current password is incorrect",
       "passwordUpdateFailed": "Password update failed: {message}",
       "passwordUpdated": "Password updated",
-      
       "sessionsTitle": "Active sessions",
       "sessionsDesc": "Sign out of every device where you're logged in — including this one. Useful if you lost a laptop or shared your password.",
       "signOutAll": "Sign out of all devices",
@@ -1826,7 +1821,9 @@
       "deals": "Deals",
       "won": "Won",
       "revenue": "Revenue",
-      "closeRate": "Close rate"
+      "closeRate": "Close rate",
+      "spend": "Spend",
+      "roas": "ROAS"
     },
     "table": {
       "ad": "Ad",
@@ -1836,7 +1833,12 @@
       "lost": "Lost",
       "revenue": "Revenue",
       "closeRate": "Close rate",
-      "revPerLead": "Rev / lead"
+      "revPerLead": "Rev / lead",
+      "spend": "Spend",
+      "roas": "ROAS",
+      "cpl": "CPL",
+      "group": "Name",
+      "ads": "Ads"
     },
     "empty": {
       "title": "No CTWA ad leads yet",
@@ -1849,6 +1851,20 @@
       "cancel": "Cancel",
       "saved": "Ad renamed",
       "error": "Couldn't rename ad"
+    },
+    "groupBy": {
+      "label": "Group by",
+      "ad": "Ad",
+      "adset": "Ad set",
+      "campaign": "Campaign"
+    },
+    "sync": {
+      "now": "Sync now",
+      "done": "Ad data synced",
+      "error": "Ad sync failed — check the connection in Settings.",
+      "never": "Not synced yet",
+      "lastSynced": "Ad data synced {time}",
+      "disabled": "Ad spend sync is off. Connect an ad account in Settings → WhatsApp to see spend, ROAS and CPL."
     }
   }
 }
