@@ -35,6 +35,9 @@ interface PipelineStageControlProps {
   accountId: string;
   pipelineId: string;
   userId: string;
+  /** Current user's `profiles.id` — deals created here auto-assign to
+   *  their creator (deals.assigned_to is a FK to profiles.id). */
+  assigneeProfileId?: string | null;
   defaultCurrency: string;
 }
 
@@ -49,6 +52,7 @@ export function PipelineStageControl({
   accountId,
   pipelineId,
   userId,
+  assigneeProfileId,
   defaultCurrency,
 }: PipelineStageControlProps) {
   const t = useTranslations("Inbox.messageThread");
@@ -111,6 +115,8 @@ export function PipelineStageControl({
         value: 0,
         currency: defaultCurrency,
         status: "open",
+        // Auto-assign the new deal to whoever created it.
+        assigned_to: assigneeProfileId ?? null,
       })
       .select("id, stage_id")
       .single();

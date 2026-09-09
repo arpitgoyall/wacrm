@@ -170,7 +170,7 @@ export function MessageThread({
   const tTimer = useTranslations("Inbox.sessionTimer");
   const tQuote = useTranslations("Inbox.replyQuote");
 
-  const { user, accountId, account, isSalesAgent, isSupportAgent, defaultCurrency } = useAuth();
+  const { user, profile, accountId, account, isSalesAgent, isSupportAgent, defaultCurrency } = useAuth();
   const { getPresence, getRow, now } = usePresence();
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1035,6 +1035,7 @@ export function MessageThread({
               accountId={accountId}
               pipelineId={teamPipelineId}
               userId={user.id}
+              assigneeProfileId={profile?.id}
               defaultCurrency={defaultCurrency}
             />
           ) : (

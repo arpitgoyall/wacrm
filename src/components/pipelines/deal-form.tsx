@@ -55,7 +55,7 @@ export function DealForm({
 }: DealFormProps) {
   const t = useTranslations("Pipelines.form");
   const supabase = createClient();
-  const { accountId, defaultCurrency } = useAuth();
+  const { accountId, defaultCurrency, profile } = useAuth();
 
   const [title, setTitle] = useState("");
   const [value, setValue] = useState("");
@@ -100,11 +100,13 @@ export function DealForm({
       setCurrency(defaultCurrency);
       setContactId("");
       setStageId(defaultStageId || stages[0]?.id || "");
-      setAssignedTo("");
+      // New deals default to the creator — whoever opens this form owns
+      // the deal unless they pick someone else before saving.
+      setAssignedTo(profile?.id ?? "");
       setExpectedCloseDate("");
       setNotes("");
     }
-  }, [open, deal, defaultStageId, stages, defaultCurrency]);
+  }, [open, deal, defaultStageId, stages, defaultCurrency, profile?.id]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Load supporting data once the sheet is open
@@ -197,7 +199,15 @@ export function DealForm({
       }
       const { error } = await supabase
         .from("deals")
-        .insert({ ...payload, user_id: user.id, account_id: accountId, status: "open" });
+        .insert({
+          ...payload,
+          // Fall back to the creator if the form was left unassigned —
+          // matches the default set when the sheet opened.
+          assigned_to: payload.assigned_to ?? profile?.id ?? null,
+          user_id: user.id,
+          account_id: accountId,
+          status: "open",
+        });
       if (error) {
         toast.error(t("toastFailedCreate"));
         setSaving(false);
