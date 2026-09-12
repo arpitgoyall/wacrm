@@ -782,8 +782,14 @@ export interface SendInteractiveButtonsArgs {
   to: string
   /** The body text — what the customer reads above the buttons. */
   bodyText: string
-  /** Optional plain-text header (≤ 60 chars). */
+  /** Optional plain-text header (≤ 60 chars). Ignored when headerType/
+   *  headerMediaUrl are set — a media header takes precedence. */
   headerText?: string
+  /** Media header format — mutually exclusive with headerText. */
+  headerType?: 'image' | 'video' | 'document'
+  /** Public HTTPS URL Meta fetches for the media header. Required
+   *  alongside headerType. */
+  headerMediaUrl?: string
   /** Optional grey footer line under the buttons (≤ 60 chars). */
   footerText?: string
   /** 1–3 buttons. Validated against Meta's limits before sending. */
@@ -805,10 +811,13 @@ export async function sendInteractiveButtons(
 ): Promise<MetaSendResult> {
   const {
     phoneNumberId, accessToken, to,
-    bodyText, headerText, footerText, buttons, contextMessageId,
+    bodyText, headerText, headerType, headerMediaUrl, footerText, buttons, contextMessageId,
   } = args
   validateInteractiveBody(bodyText)
-  validateInteractiveHeaderFooter(headerText, footerText)
+  validateInteractiveHeaderFooter(headerType ? undefined : headerText, footerText)
+  if (headerType && !headerMediaUrl) {
+    throw new Error('Interactive headerType requires headerMediaUrl.')
+  }
   if (buttons.length < 1 || buttons.length > INTERACTIVE_LIMITS.maxButtons) {
     throw new Error(
       `Interactive button message requires 1-${INTERACTIVE_LIMITS.maxButtons} buttons (got ${buttons.length}).`
@@ -842,7 +851,8 @@ export async function sendInteractiveButtons(
       })),
     },
   }
-  if (headerText) interactive.header = { type: 'text', text: headerText }
+  const header = buildInteractiveHeader(headerText, headerType, headerMediaUrl)
+  if (header) interactive.header = header
   if (footerText) interactive.footer = { text: footerText }
 
   const body: Record<string, unknown> = {
@@ -892,7 +902,14 @@ export interface SendInteractiveListArgs {
   bodyText: string
   /** Label of the tap-to-expand button on the message bubble. */
   buttonLabel: string
+  /** Ignored when headerType/headerMediaUrl are set — a media header
+   *  takes precedence. */
   headerText?: string
+  /** Media header format — mutually exclusive with headerText. */
+  headerType?: 'image' | 'video' | 'document'
+  /** Public HTTPS URL Meta fetches for the media header. Required
+   *  alongside headerType. */
+  headerMediaUrl?: string
   footerText?: string
   /**
    * 1–10 rows TOTAL across all sections. Meta caps the *total*, not
@@ -913,10 +930,14 @@ export async function sendInteractiveList(
 ): Promise<MetaSendResult> {
   const {
     phoneNumberId, accessToken, to,
-    bodyText, buttonLabel, headerText, footerText, sections, contextMessageId,
+    bodyText, buttonLabel, headerText, headerType, headerMediaUrl, footerText, sections,
+    contextMessageId,
   } = args
   validateInteractiveBody(bodyText)
-  validateInteractiveHeaderFooter(headerText, footerText)
+  validateInteractiveHeaderFooter(headerType ? undefined : headerText, footerText)
+  if (headerType && !headerMediaUrl) {
+    throw new Error('Interactive headerType requires headerMediaUrl.')
+  }
   if (!buttonLabel) throw new Error('Interactive list requires a buttonLabel.')
   if (buttonLabel.length > INTERACTIVE_LIMITS.buttonTitleMaxLength) {
     throw new Error(
@@ -974,7 +995,8 @@ export async function sendInteractiveList(
       })),
     },
   }
-  if (headerText) interactive.header = { type: 'text', text: headerText }
+  const header = buildInteractiveHeader(headerText, headerType, headerMediaUrl)
+  if (header) interactive.header = header
   if (footerText) interactive.footer = { text: footerText }
 
   const body: Record<string, unknown> = {
@@ -1025,6 +1047,30 @@ function validateInteractiveHeaderFooter(
       `Interactive footerText exceeds ${INTERACTIVE_LIMITS.footerMaxLength} chars.`
     )
   }
+}
+
+/**
+ * Build an interactive message's `header` object. A media header
+ * (image/video/document — WhatsApp doesn't allow audio here) takes
+ * precedence over a text header when both are somehow set, since a
+ * media header is the more deliberate, more recently set choice in
+ * every caller (the builder clears `headerText` when switching to a
+ * media header). Returns undefined when neither is set — the caller
+ * omits `interactive.header` entirely, matching a plain body-only
+ * message.
+ */
+function buildInteractiveHeader(
+  headerText: string | undefined,
+  headerType: 'image' | 'video' | 'document' | undefined,
+  headerMediaUrl: string | undefined,
+): Record<string, unknown> | undefined {
+  if (headerType && headerMediaUrl) {
+    return { type: headerType, [headerType]: { link: headerMediaUrl } }
+  }
+  if (headerText) {
+    return { type: 'text', text: headerText }
+  }
+  return undefined
 }
 
 // ============================================================

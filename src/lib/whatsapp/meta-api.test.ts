@@ -139,6 +139,46 @@ describe("sendInteractiveButtons — validation", () => {
       },
     });
   });
+
+  it("rejects headerType with no headerMediaUrl", async () => {
+    await expect(
+      sendInteractiveButtons({
+        ...BASE_ARGS,
+        headerType: "document",
+        buttons: [{ id: "a", title: "A" }],
+      }),
+    ).rejects.toThrow(/headerType requires headerMediaUrl/);
+  });
+
+  it("sends a media header instead of text when both are set", async () => {
+    let captured: { body: unknown } | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        captured = { body: JSON.parse(String(init.body)) };
+        return new Response(
+          JSON.stringify({ messages: [{ id: "wamid.MEDIA" }] }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    await sendInteractiveButtons({
+      ...BASE_ARGS,
+      // A stale text header must not block or leak through once a media
+      // header is set — header_type wins, matching the validator.
+      headerText: "x".repeat(INTERACTIVE_LIMITS.headerTextMaxLength + 1),
+      headerType: "image",
+      headerMediaUrl: "https://x.test/promo.jpg",
+      buttons: [{ id: "a", title: "A" }],
+    });
+
+    expect(captured!.body).toMatchObject({
+      interactive: {
+        header: { type: "image", image: { link: "https://x.test/promo.jpg" } },
+      },
+    });
+  });
 });
 
 describe("sendInteractiveList — validation", () => {
@@ -263,6 +303,46 @@ describe("sendInteractiveList — validation", () => {
             },
           ],
         },
+      },
+    });
+  });
+
+  it("rejects headerType with no headerMediaUrl", async () => {
+    await expect(
+      sendInteractiveList({
+        ...BASE_ARGS,
+        buttonLabel: "Open",
+        headerType: "video",
+        sections: [{ rows: [ROW] }],
+      }),
+    ).rejects.toThrow(/headerType requires headerMediaUrl/);
+  });
+
+  it("sends a media header instead of text when both are set", async () => {
+    let captured: { body: unknown } | null = null;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        captured = { body: JSON.parse(String(init.body)) };
+        return new Response(
+          JSON.stringify({ messages: [{ id: "wamid.LISTMEDIA" }] }),
+          { status: 200 },
+        );
+      }),
+    );
+
+    await sendInteractiveList({
+      ...BASE_ARGS,
+      buttonLabel: "Open",
+      headerText: "Ignored",
+      headerType: "document",
+      headerMediaUrl: "https://x.test/menu.pdf",
+      sections: [{ rows: [ROW] }],
+    });
+
+    expect(captured!.body).toMatchObject({
+      interactive: {
+        header: { type: "document", document: { link: "https://x.test/menu.pdf" } },
       },
     });
   });

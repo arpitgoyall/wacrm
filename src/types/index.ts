@@ -771,6 +771,10 @@ export interface AutomationLog {
 
 export type QuickReplyKind = 'text' | 'interactive';
 
+/** A quick reply's media content type — same three kinds as a template
+ *  or interactive-message header; no audio (migration 060). */
+export type QuickReplyMediaType = 'image' | 'video' | 'document';
+
 export interface QuickReply {
   id: string;
   /** Account tenancy key — shared across all members of the account. */
@@ -779,10 +783,18 @@ export interface QuickReply {
   user_id: string;
   title: string;
   kind: QuickReplyKind;
-  /** Set when `kind === 'text'`. */
+  /** Set when `kind === 'text'`. Caption/body — may be null when the
+   *  quick reply is attachment-only. */
   content_text?: string | null;
   /** Set when `kind === 'interactive'`. */
   interactive_payload?: InteractiveMessagePayload | null;
+  /** Optional attachment for a `kind === 'text'` quick reply
+   *  (migration 060). `interactive` quick replies attach media via
+   *  `interactive_payload.header_media_url` instead. */
+  media_url?: string | null;
+  media_type?: QuickReplyMediaType | null;
+  /** Original file name — surfaced to the recipient for documents. */
+  media_filename?: string | null;
   created_at: string;
   updated_at: string;
 }

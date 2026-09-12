@@ -30,12 +30,22 @@ export interface InteractiveButton {
   title: string
 }
 
+/** WhatsApp interactive headers support these three media kinds — no
+ *  audio, unlike a regular chat attachment. */
+export type InteractiveHeaderMediaType = 'image' | 'video' | 'document'
+
 export interface InteractiveButtonsPayload {
   kind: 'buttons'
   /** Body text shown above the buttons (≤ 1024 chars). */
   body: string
-  /** Optional plain-text header (≤ 60 chars). */
+  /** Optional plain-text header (≤ 60 chars). Ignored when
+   *  header_type/header_media_url are set — a media header wins. */
   header?: string
+  /** Media header format — mutually exclusive with `header`. */
+  header_type?: InteractiveHeaderMediaType
+  /** Public HTTPS URL Meta fetches for the media header. Required
+   *  alongside header_type. */
+  header_media_url?: string
   /** Optional grey footer line (≤ 60 chars). */
   footer?: string
   /** 1–3 buttons. */
@@ -60,7 +70,14 @@ export interface InteractiveListSection {
 export interface InteractiveListPayload {
   kind: 'list'
   body: string
+  /** Ignored when header_type/header_media_url are set — a media
+   *  header wins. */
   header?: string
+  /** Media header format — mutually exclusive with `header`. */
+  header_type?: InteractiveHeaderMediaType
+  /** Public HTTPS URL Meta fetches for the media header. Required
+   *  alongside header_type. */
+  header_media_url?: string
   footer?: string
   /** Label of the tap-to-expand button on the message bubble (≤ 20 chars). */
   button_label: string
@@ -83,11 +100,28 @@ function fail(error: string): InteractiveValidation {
   return { ok: false, error }
 }
 
+const INTERACTIVE_HEADER_MEDIA_TYPES: readonly InteractiveHeaderMediaType[] = [
+  'image',
+  'video',
+  'document',
+]
+
 function validateHeaderFooter(
   header: string | undefined,
+  headerType: InteractiveHeaderMediaType | undefined,
+  headerMediaUrl: string | undefined,
   footer: string | undefined,
 ): InteractiveValidation {
-  if (header && header.length > INTERACTIVE_LIMITS.headerTextMaxLength) {
+  if (headerType !== undefined) {
+    if (!INTERACTIVE_HEADER_MEDIA_TYPES.includes(headerType)) {
+      return fail('Header media type must be image, video, or document.')
+    }
+    if (!headerMediaUrl || !headerMediaUrl.trim()) {
+      return fail('A media header needs a file — upload one or remove the header.')
+    }
+    // header (text) is simply ignored once header_type is set — no
+    // conflict to report; the builder itself never sets both.
+  } else if (header && header.length > INTERACTIVE_LIMITS.headerTextMaxLength) {
     return fail(
       `Header exceeds the ${INTERACTIVE_LIMITS.headerTextMaxLength}-character limit.`,
     )
@@ -125,7 +159,7 @@ export function validateInteractivePayload(
       `Body text exceeds the ${INTERACTIVE_LIMITS.bodyMaxLength}-character limit.`,
     )
   }
-  const hf = validateHeaderFooter(p.header, p.footer)
+  const hf = validateHeaderFooter(p.header, p.header_type, p.header_media_url, p.footer)
   if (!hf.ok) return hf
 
   if (p.kind === 'buttons') {

@@ -47,6 +47,7 @@ import {
   deleteAccountMedia,
   MEDIA_MAX_BYTES_BY_KIND,
 } from "@/lib/storage/upload-media";
+import { CHAT_MEDIA_ACCEPT } from "@/lib/storage/media-accept";
 import { ReplyQuote } from "./reply-quote";
 import { useTranslations } from "next-intl";
 import {
@@ -90,16 +91,9 @@ interface ReplyDraft {
   preview: string;
 }
 
-// Mirrors the chat-media bucket's allowed_mime_types (migration 023) for
-// the file picker so unsupported files are rejected before upload rather
-// than failing with a confusing Storage error. Audio has no picker — it's
-// captured via the recorder.
-const PICKER_ACCEPT: Record<"image" | "video" | "document", string> = {
-  image: "image/png,image/jpeg,image/webp",
-  video: "video/mp4,video/3gpp",
-  document:
-    "application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain",
-};
+// Rejects unsupported files before upload rather than failing with a
+// confusing Storage error. See media-accept.ts for why this is shared.
+const PICKER_ACCEPT = CHAT_MEDIA_ACCEPT;
 
 interface MediaDraft {
   kind: ComposerMediaKind;
@@ -355,13 +349,32 @@ export function MessageComposer({
     }
   }, [interactivePayload, t]);
 
-  // A picked quick reply: text fills the composer; interactive opens the
-  // builder pre-filled so the agent can tweak before sending.
+  // A picked quick reply: interactive opens the builder pre-filled so the
+  // agent can tweak before sending; a text snippet with an attachment
+  // stages that attachment (caption = the snippet's text) exactly like a
+  // manual attach; plain text just fills the composer.
   const handlePickQuickReply = useCallback(
     (qr: QuickReply) => {
       setQuickReplyOpen(false);
       if (qr.kind === "interactive" && qr.interactive_payload) {
         openInteractiveBuilder(qr.interactive_payload);
+        return;
+      }
+      if (qr.media_url && qr.media_type) {
+        // Replacing any already-staged (but unsent) attachment — GC it
+        // first, same as picking a file from the attach menu.
+        removeStaged(draftRef.current?.path);
+        setDraft({
+          kind: qr.media_type,
+          mediaUrl: qr.media_url,
+          // Empty, not the quick reply's real storage path: this asset
+          // is reused every time the snippet is picked, so discarding
+          // the draft (or a failed send) must never GC it — both paths
+          // already no-op on a falsy path.
+          path: "",
+          filename: qr.media_filename ?? "",
+          caption: qr.content_text ?? "",
+        });
         return;
       }
       const body = qr.content_text ?? "";
@@ -379,7 +392,7 @@ export function MessageComposer({
         }
       });
     },
-    [openInteractiveBuilder, adjustHeight],
+    [openInteractiveBuilder, adjustHeight, removeStaged],
   );
 
   // Upload a captured file to chat-media and stage it as a draft.

@@ -1,7 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, MessageSquare, Pencil, Plus, Trash2, Zap } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  FileText,
+  Image as ImageIcon,
+  Loader2,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+  Video,
+  X,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,7 +35,15 @@ import {
   interactivePayloadPreviewText,
   type InteractiveMessagePayload,
 } from "@/lib/whatsapp/interactive";
-import type { QuickReply, QuickReplyKind } from "@/types";
+import {
+  uploadAccountMedia,
+  MEDIA_MAX_BYTES_BY_KIND,
+} from "@/lib/storage/upload-media";
+import { CHAT_MEDIA_ACCEPT } from "@/lib/storage/media-accept";
+import type { QuickReply, QuickReplyKind, QuickReplyMediaType } from "@/types";
+
+/** Bucket every non-template chat attachment uploads to (migration 023). */
+const MEDIA_BUCKET = "chat-media";
 
 interface DraftState {
   id?: string;
@@ -31,6 +51,9 @@ interface DraftState {
   kind: QuickReplyKind;
   content_text: string;
   interactive_payload: InteractiveMessagePayload;
+  media_url: string | null;
+  media_type: QuickReplyMediaType | null;
+  media_filename: string | null;
 }
 
 function emptyDraft(): DraftState {
@@ -39,6 +62,9 @@ function emptyDraft(): DraftState {
     kind: "text",
     content_text: "",
     interactive_payload: blankButtonsPayload(),
+    media_url: null,
+    media_type: null,
+    media_filename: null,
   };
 }
 
@@ -47,6 +73,8 @@ export function QuickRepliesManager() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const mediaFileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -72,7 +100,47 @@ export function QuickRepliesManager() {
       content_text: qr.content_text ?? "",
       interactive_payload:
         qr.interactive_payload ?? blankButtonsPayload(),
+      media_url: qr.media_url ?? null,
+      media_type: qr.media_type ?? null,
+      media_filename: qr.media_filename ?? null,
     });
+
+  const removeMedia = () => {
+    setDraft((d) => (d ? { ...d, media_url: null, media_type: null, media_filename: null } : d));
+  };
+
+  const handleMediaFile = useCallback(async (file: File) => {
+    const kind: QuickReplyMediaType = file.type.startsWith("image/")
+      ? "image"
+      : file.type.startsWith("video/")
+        ? "video"
+        : "document";
+    const allowed = CHAT_MEDIA_ACCEPT[kind].split(",");
+    if (!allowed.includes(file.type)) {
+      toast.error("That file type isn't supported for a quick-reply attachment.");
+      return;
+    }
+    const max = MEDIA_MAX_BYTES_BY_KIND[kind];
+    if (file.size > max) {
+      toast.error(
+        `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is ${Math.round(max / 1024 / 1024)} MB.`,
+      );
+      return;
+    }
+    setUploadingMedia(true);
+    try {
+      const { publicUrl } = await uploadAccountMedia(MEDIA_BUCKET, file);
+      setDraft((d) =>
+        d
+          ? { ...d, media_url: publicUrl, media_type: kind, media_filename: file.name }
+          : d,
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingMedia(false);
+    }
+  }, []);
 
   const save = useCallback(async () => {
     if (!draft) return;
@@ -83,7 +151,14 @@ export function QuickRepliesManager() {
     const payload =
       draft.kind === "interactive"
         ? { title: draft.title, kind: "interactive", interactive_payload: draft.interactive_payload }
-        : { title: draft.title, kind: "text", content_text: draft.content_text };
+        : {
+            title: draft.title,
+            kind: "text",
+            content_text: draft.content_text,
+            media_url: draft.media_url,
+            media_type: draft.media_type,
+            media_filename: draft.media_filename,
+          };
 
     setSaving(true);
     try {
@@ -158,10 +233,16 @@ export function QuickRepliesManager() {
               )}
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium text-foreground">{qr.title}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {qr.kind === "interactive" && qr.interactive_payload
-                    ? interactivePayloadPreviewText(qr.interactive_payload)
-                    : qr.content_text}
+                <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                  {qr.kind === "text" && qr.media_url && (
+                    <MediaKindIcon kind={qr.media_type} className="h-3 w-3 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    {qr.kind === "interactive" && qr.interactive_payload
+                      ? interactivePayloadPreviewText(qr.interactive_payload)
+                      : qr.content_text ||
+                        (qr.media_url ? "[attachment]" : "")}
+                  </span>
                 </p>
               </div>
               <div className="flex shrink-0 gap-1">
@@ -211,12 +292,65 @@ export function QuickRepliesManager() {
                 />
               </div>
               {draft.kind === "text" ? (
-                <Textarea
-                  value={draft.content_text}
-                  onChange={(e) => setDraft({ ...draft, content_text: e.target.value })}
-                  placeholder="The message text to insert"
-                  className="min-h-28 bg-muted text-foreground"
-                />
+                <div className="space-y-2">
+                  <Textarea
+                    value={draft.content_text}
+                    onChange={(e) => setDraft({ ...draft, content_text: e.target.value })}
+                    placeholder="The message text to insert"
+                    className="min-h-28 bg-muted text-foreground"
+                  />
+
+                  <div>
+                    <label className="mb-1 block text-xs text-muted-foreground">
+                      Attachment (optional)
+                    </label>
+                    {draft.media_url ? (
+                      <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 p-2">
+                        <MediaKindIcon kind={draft.media_type} className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+                          {draft.media_filename || draft.media_url}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={removeMedia}
+                          className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <input
+                          ref={mediaFileRef}
+                          type="file"
+                          accept={Object.values(CHAT_MEDIA_ACCEPT).join(",")}
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) void handleMediaFile(f);
+                            e.target.value = "";
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={uploadingMedia}
+                          onClick={() => mediaFileRef.current?.click()}
+                        >
+                          {uploadingMedia ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Upload className="h-3.5 w-3.5" />
+                          )}
+                          Attach image, video, or document
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : (
                 <InteractiveBuilder
                   value={draft.interactive_payload}
@@ -262,4 +396,17 @@ function KindTab({
       {label}
     </button>
   );
+}
+
+/** Small icon matching a quick reply's attachment kind. */
+function MediaKindIcon({
+  kind,
+  className,
+}: {
+  kind: QuickReplyMediaType | null | undefined;
+  className?: string;
+}) {
+  if (kind === "image") return <ImageIcon className={className} />;
+  if (kind === "video") return <Video className={className} />;
+  return <FileText className={className} />;
 }

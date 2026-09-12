@@ -90,6 +90,51 @@ describe('validateInteractivePayload — buttons', () => {
   })
 })
 
+describe('validateInteractivePayload — media header', () => {
+  it('accepts a media header with a url', () => {
+    const res = validateInteractivePayload({
+      ...validButtons,
+      header_type: 'image',
+      header_media_url: 'https://x.test/promo.jpg',
+    })
+    expect(res).toEqual({ ok: true })
+  })
+
+  it('rejects a media header with no url', () => {
+    const res = validateInteractivePayload({
+      ...validButtons,
+      header_type: 'document',
+    })
+    expect(res.ok).toBe(false)
+  })
+
+  it('rejects an unknown header_type', () => {
+    const res = validateInteractivePayload({
+      ...validButtons,
+      header_type: 'audio',
+      header_media_url: 'https://x.test/clip.ogg',
+    })
+    expect(res.ok).toBe(false)
+  })
+
+  it('ignores the text header-length cap once header_type is set', () => {
+    // A stale long `header` string left over from switching kinds
+    // shouldn't block a valid media header — header_type wins.
+    const res = validateInteractivePayload({
+      ...validButtons,
+      header: 'x'.repeat(100),
+      header_type: 'video',
+      header_media_url: 'https://x.test/clip.mp4',
+    })
+    expect(res).toEqual({ ok: true })
+  })
+
+  it('still enforces the text header-length cap when no media header is set', () => {
+    const res = validateInteractivePayload({ ...validButtons, header: 'x'.repeat(61) })
+    expect(res.ok).toBe(false)
+  })
+})
+
 describe('validateInteractivePayload — list', () => {
   it('accepts a well-formed list payload', () => {
     expect(validateInteractivePayload(validList)).toEqual({ ok: true })

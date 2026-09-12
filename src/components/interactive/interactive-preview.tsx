@@ -1,6 +1,6 @@
 "use client";
 
-import { List, Reply } from "lucide-react";
+import { FileText, List, Reply, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { InteractiveMessagePayload } from "@/lib/whatsapp/interactive";
 
@@ -28,8 +28,28 @@ export function InteractivePreview({
         className,
       )}
     >
+      {payload.header_type === "image" && payload.header_media_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={payload.header_media_url}
+          alt="Header preview"
+          className="h-32 w-full object-cover"
+        />
+      )}
+      {payload.header_type === "video" && payload.header_media_url && (
+        <div className="flex h-32 w-full items-center justify-center bg-muted text-muted-foreground">
+          <Video className="h-8 w-8" />
+        </div>
+      )}
+      {payload.header_type === "document" && payload.header_media_url && (
+        <div className="flex h-16 w-full items-center gap-2 bg-muted px-3 text-muted-foreground">
+          <FileText className="h-5 w-5 shrink-0" />
+          <span className="truncate text-xs">Document attached</span>
+        </div>
+      )}
+
       <div className="px-3 py-2">
-        {payload.header ? (
+        {!payload.header_type && payload.header ? (
           <p className="mb-1 break-words text-sm font-semibold">
             {payload.header}
           </p>

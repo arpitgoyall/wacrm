@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { parseQuickReplyMediaFields } from '@/lib/quick-replies/media'
 
 // Update / delete a single quick reply. Quick replies are account-
 // shared, so every mutation is scoped by `account_id` (the service-role
@@ -33,6 +34,9 @@ export async function PATCH(
   // When `kind` is supplied (e.g. the editor flips Text ↔ Interactive), it
   // drives which content column is authoritative and the other is cleared —
   // otherwise a switched row keeps a stale payload the picker mis-routes on.
+  // Media (migration 060) follows content_text: it's 'text'-only, so
+  // flipping to 'interactive' clears it too (that kind attaches media via
+  // interactive_payload.header_media_url instead).
   if ('kind' in body) {
     if (body.kind !== 'text' && body.kind !== 'interactive') {
       return NextResponse.json({ error: 'kind must be "text" or "interactive"' }, { status: 400 })
@@ -43,19 +47,30 @@ export async function PATCH(
       if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 })
       update.interactive_payload = body.interactive_payload
       update.content_text = null
+      update.media_url = null
+      update.media_type = null
+      update.media_filename = null
     } else {
-      const text = typeof body.content_text === 'string' ? body.content_text : ''
-      if (!text.trim()) {
+      const text = typeof body.content_text === 'string' ? body.content_text.trim() : ''
+      const mediaResult = parseQuickReplyMediaFields(body)
+      if (!mediaResult.ok) return NextResponse.json({ error: mediaResult.error }, { status: 400 })
+      if (!text && !mediaResult.media_url) {
         return NextResponse.json(
-          { error: 'content_text is required for text quick replies' },
+          { error: 'A text quick reply needs a message, an attachment, or both.' },
           { status: 400 },
         )
       }
-      update.content_text = text
+      update.content_text = text || null
       update.interactive_payload = null
+      update.media_url = mediaResult.media_url
+      update.media_type = mediaResult.media_type
+      update.media_filename = mediaResult.media_filename
     }
   } else {
     // No kind change — allow partial edits of whichever field the row uses.
+    // (If this leaves a 'text' row with neither content_text nor media_url,
+    // the quick_replies_text_has_content CHECK constraint rejects the
+    // UPDATE — belt-and-braces for an edit that clears the only content.)
     if ('content_text' in body) update.content_text = body.content_text ?? null
     if ('interactive_payload' in body) {
       if (body.interactive_payload != null) {
@@ -65,6 +80,13 @@ export async function PATCH(
         }
       }
       update.interactive_payload = body.interactive_payload ?? null
+    }
+    if ('media_url' in body || 'media_type' in body || 'media_filename' in body) {
+      const mediaResult = parseQuickReplyMediaFields(body)
+      if (!mediaResult.ok) return NextResponse.json({ error: mediaResult.error }, { status: 400 })
+      update.media_url = mediaResult.media_url
+      update.media_type = mediaResult.media_type
+      update.media_filename = mediaResult.media_filename
     }
   }
 

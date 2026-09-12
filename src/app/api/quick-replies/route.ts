@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
+import { parseQuickReplyMediaFields } from '@/lib/quick-replies/media'
 
 // Quick replies — reusable snippets (plain text or a saved interactive
 // message) shared across the account. GET lists; POST creates. Mirrors
@@ -42,6 +43,9 @@ export async function POST(request: Request) {
 
   let content_text: string | null = null
   let interactive_payload: unknown = null
+  let media_url: string | null = null
+  let media_type: string | null = null
+  let media_filename: string | null = null
 
   if (kind === 'interactive') {
     const result = validateInteractivePayload(body.interactive_payload)
@@ -50,14 +54,21 @@ export async function POST(request: Request) {
     }
     interactive_payload = body.interactive_payload
   } else {
-    const text = typeof body.content_text === 'string' ? body.content_text : ''
-    if (!text.trim()) {
+    const text = typeof body.content_text === 'string' ? body.content_text.trim() : ''
+    const mediaResult = parseQuickReplyMediaFields(body)
+    if (!mediaResult.ok) {
+      return NextResponse.json({ error: mediaResult.error }, { status: 400 })
+    }
+    if (!text && !mediaResult.media_url) {
       return NextResponse.json(
-        { error: 'content_text is required for text quick replies' },
+        { error: 'A text quick reply needs a message, an attachment, or both.' },
         { status: 400 },
       )
     }
-    content_text = text
+    content_text = text || null
+    media_url = mediaResult.media_url
+    media_type = mediaResult.media_type
+    media_filename = mediaResult.media_filename
   }
 
   const { data, error } = await supabaseAdmin()
@@ -69,6 +80,9 @@ export async function POST(request: Request) {
       kind,
       content_text,
       interactive_payload,
+      media_url,
+      media_type,
+      media_filename,
     })
     .select()
     .single()

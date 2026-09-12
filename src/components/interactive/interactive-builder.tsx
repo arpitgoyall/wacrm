@@ -1,21 +1,40 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Loader2, Plus, Trash2, Upload } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { slugify } from "@/components/flows/shared";
 import { INTERACTIVE_LIMITS } from "@/lib/whatsapp/meta-api";
 import {
+  uploadAccountMedia,
+  MEDIA_MAX_BYTES_BY_KIND,
+} from "@/lib/storage/upload-media";
+import { CHAT_MEDIA_ACCEPT } from "@/lib/storage/media-accept";
+import {
   validateInteractivePayload,
   type InteractiveButtonsPayload,
+  type InteractiveHeaderMediaType,
   type InteractiveListPayload,
   type InteractiveMessagePayload,
 } from "@/lib/whatsapp/interactive";
 import { InteractivePreview } from "./interactive-preview";
+
+/** Bucket every non-template chat attachment uploads to (migration 023). */
+const HEADER_MEDIA_BUCKET = "chat-media";
+
+type HeaderFormat = "none" | "text" | InteractiveHeaderMediaType;
 
 // ------------------------------------------------------------
 // Blank payload factories — used to seed a fresh builder and to
@@ -72,20 +91,78 @@ export function InteractiveBuilder({
   showPreview = true,
 }: InteractiveBuilderProps) {
   const [advanced, setAdvanced] = useState(false);
+  const [uploadingHeader, setUploadingHeader] = useState(false);
+  const headerFileRef = useRef<HTMLInputElement>(null);
   const validation = validateInteractivePayload(value);
+
+  // `header` (text) can legitimately be an empty string once the user
+  // picks "Text" but hasn't typed yet — so "text was chosen" is tracked
+  // by `header !== undefined`, not by truthiness. `header_type` wins
+  // whenever both are somehow set (matches the sender + validator).
+  const headerFormat: HeaderFormat =
+    value.header_type ?? (value.header !== undefined ? "text" : "none");
 
   const setField = (patch: Partial<InteractiveMessagePayload>) =>
     onChange({ ...value, ...patch } as InteractiveMessagePayload);
 
   const switchKind = (kind: "buttons" | "list") => {
     if (kind === value.kind) return;
-    const shared = { body: value.body, header: value.header, footer: value.footer };
+    const shared = {
+      body: value.body,
+      header: value.header,
+      header_type: value.header_type,
+      header_media_url: value.header_media_url,
+      footer: value.footer,
+    };
     onChange(
       kind === "buttons"
         ? { ...blankButtonsPayload(), ...shared }
         : { ...blankListPayload(), ...shared },
     );
   };
+
+  const changeHeaderFormat = (format: HeaderFormat) => {
+    if (format === "none") {
+      setField({ header: undefined, header_type: undefined, header_media_url: undefined });
+    } else if (format === "text") {
+      setField({ header: value.header ?? "", header_type: undefined, header_media_url: undefined });
+    } else {
+      // Switching between media formats (e.g. image → document) drops
+      // the old file — a stale image URL sent as a "document" header
+      // would just fail at Meta, so there's nothing worth keeping.
+      setField({
+        header: undefined,
+        header_type: format,
+        header_media_url: value.header_type === format ? value.header_media_url : undefined,
+      });
+    }
+  };
+
+  async function handleHeaderMediaFile(file: File) {
+    const format = value.header_type;
+    if (!format) return;
+    const allowed = CHAT_MEDIA_ACCEPT[format].split(",");
+    if (!allowed.includes(file.type)) {
+      toast.error(`This file type isn't supported for a ${format} header.`);
+      return;
+    }
+    const max = MEDIA_MAX_BYTES_BY_KIND[format];
+    if (file.size > max) {
+      toast.error(
+        `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is ${Math.round(max / 1024 / 1024)} MB.`,
+      );
+      return;
+    }
+    setUploadingHeader(true);
+    try {
+      const { publicUrl } = await uploadAccountMedia(HEADER_MEDIA_BUCKET, file);
+      setField({ header_media_url: publicUrl });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploadingHeader(false);
+    }
+  }
 
   return (
     // Editor and preview sit side by side only when the SPACE WE WERE
@@ -125,14 +202,78 @@ export function InteractiveBuilder({
           <div className="grid grid-cols-2 gap-2">
             <Field
               label="Header (optional)"
-              counter={`${(value.header ?? "").length}/${INTERACTIVE_LIMITS.headerTextMaxLength}`}
+              counter={
+                headerFormat === "text"
+                  ? `${(value.header ?? "").length}/${INTERACTIVE_LIMITS.headerTextMaxLength}`
+                  : undefined
+              }
             >
-              <Input
-                value={value.header ?? ""}
-                maxLength={INTERACTIVE_LIMITS.headerTextMaxLength}
-                onChange={(e) => setField({ header: e.target.value })}
-                className="bg-muted text-foreground"
-              />
+              <div className="space-y-1.5">
+                <Select
+                  value={headerFormat}
+                  onValueChange={(v) => changeHeaderFormat(v as HeaderFormat)}
+                >
+                  <SelectTrigger className="w-full bg-muted text-foreground">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None</SelectItem>
+                    <SelectItem value="text">Text</SelectItem>
+                    <SelectItem value="image">Image</SelectItem>
+                    <SelectItem value="video">Video</SelectItem>
+                    <SelectItem value="document">Document</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {headerFormat === "text" && (
+                  <Input
+                    value={value.header ?? ""}
+                    maxLength={INTERACTIVE_LIMITS.headerTextMaxLength}
+                    onChange={(e) => setField({ header: e.target.value })}
+                    className="bg-muted text-foreground"
+                  />
+                )}
+
+                {(headerFormat === "image" ||
+                  headerFormat === "video" ||
+                  headerFormat === "document") && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <input
+                        ref={headerFileRef}
+                        type="file"
+                        accept={CHAT_MEDIA_ACCEPT[headerFormat]}
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) void handleHeaderMediaFile(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={uploadingHeader}
+                        onClick={() => headerFileRef.current?.click()}
+                      >
+                        {uploadingHeader ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Upload className="h-3.5 w-3.5" />
+                        )}
+                        Upload
+                      </Button>
+                    </div>
+                    <Input
+                      value={value.header_media_url ?? ""}
+                      onChange={(e) => setField({ header_media_url: e.target.value })}
+                      placeholder="https://… (or paste a public link)"
+                      className="bg-muted text-xs text-foreground"
+                    />
+                  </>
+                )}
+              </div>
             </Field>
             <Field
               label="Footer (optional)"
