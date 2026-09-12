@@ -3,6 +3,7 @@ import {
   ACCOUNT_ROLES,
   type AccountRole,
   canDeleteAccount,
+  canDeleteContacts,
   canEditSettings,
   canManageMembers,
   canSendMessages,
@@ -112,6 +113,13 @@ describe("capability predicates", () => {
     expect(canViewOnly("admin")).toBe(false);
     expect(canViewOnly("agent")).toBe(false);
     expect(canViewOnly("viewer")).toBe(true);
+  });
+
+  it("canDeleteContacts: admin+ only", () => {
+    expect(canDeleteContacts("owner")).toBe(true);
+    expect(canDeleteContacts("admin")).toBe(true);
+    expect(canDeleteContacts("agent")).toBe(false);
+    expect(canDeleteContacts("viewer")).toBe(false);
   });
 
   it("canDeleteAccount: owner only", () => {

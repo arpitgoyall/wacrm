@@ -93,13 +93,13 @@ async function upsertTemplateRow(
  */
 export async function POST(request: Request) {
   try {
-    // Message templates are settings-class data: `canEditSettings` and the
-    // message_templates_insert/update RLS policies (migration 017) both
-    // require 'admin'. Resolving account_id off the profile only proved
-    // membership, so a viewer or agent could push a template to Meta for
-    // approval — an external side effect RLS can't roll back — before the
+    // Message templates are team-wide operational data (migration 059):
+    // any agent+ can submit, matching the message_templates_insert/update
+    // RLS policies. Resolving account_id off the profile alone wouldn't be
+    // enough — a viewer could otherwise push a template to Meta for
+    // approval (an external side effect RLS can't roll back) before the
     // local upsert was refused.
-    const { supabase, accountId, userId } = await requireRole('admin')
+    const { supabase, accountId, userId } = await requireRole('agent')
 
     let payload: TemplatePayload
     try {

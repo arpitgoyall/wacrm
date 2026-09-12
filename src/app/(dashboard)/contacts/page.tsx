@@ -86,6 +86,7 @@ export default function ContactsPage() {
   const { accountId } = useAuth();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
+  const canDeleteContacts = useCan('delete-contacts');
 
   const [contacts, setContacts] = useState<ContactWithTags[]>([]);
   const [loading, setLoading] = useState(true);
@@ -436,15 +437,19 @@ export default function ContactsPage() {
   }
 
   async function handleDelete() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || !canDeleteContacts) return;
     setDeleting(true);
 
-    const { error } = await supabase
+    // `count: 'exact'` so a role/RLS mismatch surfaces as a failure
+    // instead of a false-positive toast — contacts_delete (migration
+    // 044) is admin+ only, and a plain `.delete()` with no matching
+    // row (RLS silently excludes it) returns no error, just 0 rows.
+    const { error, count } = await supabase
       .from('contacts')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('id', deleteTarget.id);
 
-    if (error) {
+    if (error || !count) {
       toast.error(t('toastFailedDelete'));
     } else {
       toast.success(t('toastDeleted'));
@@ -483,12 +488,18 @@ export default function ContactsPage() {
 
   async function handleBulkDelete() {
     const ids = [...selected];
-    if (ids.length === 0) return;
+    if (ids.length === 0 || !canDeleteContacts) return;
     setDeleting(true);
 
-    const { error } = await supabase.from('contacts').delete().in('id', ids);
+    // See handleDelete — `count: 'exact'` catches an RLS no-op
+    // (contacts_delete is admin+ only) instead of reporting success
+    // for rows that were silently left untouched.
+    const { error, count } = await supabase
+      .from('contacts')
+      .delete({ count: 'exact' })
+      .in('id', ids);
 
-    if (error) {
+    if (error || count !== ids.length) {
       toast.error(t('toastBulkFailedDelete'));
     } else {
       toast.success(t('toastBulkDeleted', { count: ids.length }));
@@ -712,7 +723,7 @@ export default function ContactsPage() {
             <GatedButton
               variant="destructive"
               size="sm"
-              canAct={canEdit}
+              canAct={canDeleteContacts}
               gateReason="delete contacts"
               onClick={() => setBulkDeleteOpen(true)}
             >
@@ -831,17 +842,21 @@ export default function ContactsPage() {
                           <Pencil className="size-4" />
                           {t('editAction')}
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator className="bg-border" />
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            confirmDelete(contact);
-                          }}
-                        >
-                          <Trash2 className="size-4" />
-                          {t('deleteAction')}
-                        </DropdownMenuItem>
+                        {canDeleteContacts && (
+                          <>
+                            <DropdownMenuSeparator className="bg-border" />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                confirmDelete(contact);
+                              }}
+                            >
+                              <Trash2 className="size-4" />
+                              {t('deleteAction')}
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </TableCell>

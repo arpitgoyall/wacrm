@@ -87,8 +87,10 @@ export function canManageMembers(role: AccountRole): boolean {
 
 /**
  * Owner / admin: edit account-wide settings (WhatsApp config,
- * message templates, pipelines, tags, custom fields, account
- * name). Excludes per-user settings like avatar or own password.
+ * pipelines, tags, custom fields, account name). Excludes
+ * per-user settings like avatar or own password. Message templates
+ * moved to `canSendMessages` (migration 059) — any agent+ can
+ * manage the shared template library now.
  */
 export function canEditSettings(role: AccountRole): boolean {
   return hasMinRole(role, "admin");
@@ -110,6 +112,17 @@ export function canSendMessages(role: AccountRole): boolean {
  */
 export function canViewOnly(role: AccountRole): boolean {
   return role === "viewer";
+}
+
+/**
+ * Owner / admin only: delete a contact. Agents can create and edit
+ * their assigned contacts (`canSendMessages`) but not remove a
+ * contact record outright — matches the `contacts_delete` RLS
+ * policy in migration 044_assigned_contact_visibility.sql. Keep
+ * these two in lockstep if either changes.
+ */
+export function canDeleteContacts(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
 }
 
 /** Owner only: irreversible destructive operations. */

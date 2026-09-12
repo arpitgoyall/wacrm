@@ -168,6 +168,13 @@ export async function PATCH(
           metaTemplateId: existing.meta_template_id,
           accessToken,
           components: metaPayload.components,
+          // Forward the (possibly changed) category so a Marketing ⇄
+          // Utility switch actually reaches Meta — previously this was
+          // dropped here, so the local row flipped to the new category
+          // + PENDING while Meta never saw the request, and the next
+          // sync silently reverted it (issue: category-change requests
+          // from the Templates section had no effect).
+          category: metaPayload.category,
         })
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Meta edit failed.'

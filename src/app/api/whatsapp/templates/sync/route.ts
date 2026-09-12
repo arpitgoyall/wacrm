@@ -129,11 +129,10 @@ function extractSampleValues(
 
 export async function POST() {
   try {
-    // Syncing rewrites the account-wide template catalog, which is
-    // settings-class data: `canEditSettings` and the message_templates
-    // insert/update RLS policies (migration 017) both require 'admin'.
-    // Resolving account_id off the profile only proved membership.
-    const { supabase, accountId, userId } = await requireRole('admin')
+    // Syncing rewrites the account-wide template catalog. Templates are
+    // team-wide operational data (migration 059): any agent+ can sync,
+    // matching the message_templates insert/update RLS policies.
+    const { supabase, accountId, userId } = await requireRole('agent')
 
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
