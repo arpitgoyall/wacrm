@@ -236,6 +236,16 @@ export async function POST() {
         meta_template_id: t.id,
         quality_score: normalizeQualityScore(t.quality_score),
         updated_at: new Date().toISOString(),
+        // Meta says this template is APPROVED right now, so any stale
+        // submission_error from a past failed edit attempt no longer
+        // describes its current state — clear it so a later UI surface
+        // reading this column directly doesn't show a misleading
+        // permanent error on a template that's actually fine. Omitted
+        // (not set to null) for every other status so an in-flight
+        // failure's message survives until the next real outcome.
+        ...(normalizeStatus(t.status) === 'APPROVED'
+          ? { submission_error: null }
+          : {}),
       }
 
       const { data: existing, error: lookupErr } = await supabase

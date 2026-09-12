@@ -57,6 +57,15 @@ const CATEGORIES = ['Marketing', 'Utility', 'Authentication'] as const;
 type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
 const HEADER_FORMATS: HeaderFormat[] = ['none', 'text', 'image', 'video', 'document'];
 
+// Meta's per-format constraints for a template MEDIA header — not the
+// same as chat-message attachments (e.g. a template DOCUMENT header
+// must be a PDF; a regular chat document can be almost anything).
+const HEADER_MEDIA_ACCEPT = {
+  image: ['image/jpeg', 'image/png'],
+  video: ['video/mp4', 'video/3gpp'],
+  document: ['application/pdf'],
+} as const;
+
 const categoryColors: Record<string, string> = {
   Marketing: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
   Utility: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
@@ -461,14 +470,29 @@ export function TemplateManager() {
   const headerNeedsMedia =
     form.header_format !== 'none' && form.header_format !== 'text';
 
-  async function handleHeaderImageFile(file: File) {
-    if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      toast.error(t('toastInvalidImage'));
+  async function handleHeaderMediaFile(file: File) {
+    const format = form.header_format;
+    if (format !== 'image' && format !== 'video' && format !== 'document') return;
+
+    if (!(HEADER_MEDIA_ACCEPT[format] as readonly string[]).includes(file.type)) {
+      toast.error(
+        format === 'image'
+          ? t('toastInvalidImage')
+          : format === 'video'
+            ? t('toastInvalidVideo')
+            : t('toastInvalidDocument'),
+      );
       return;
     }
-    if (file.size > MEDIA_MAX_BYTES_BY_KIND.image) {
+    const max = MEDIA_MAX_BYTES_BY_KIND[format];
+    if (file.size > max) {
       toast.error(
-        t('toastImageTooLarge', { size: (file.size / 1024 / 1024).toFixed(1) }),
+        format === 'image'
+          ? t('toastImageTooLarge', { size: (file.size / 1024 / 1024).toFixed(1) })
+          : t('toastFileTooLarge', {
+              size: (file.size / 1024 / 1024).toFixed(1),
+              max: (max / 1024 / 1024).toFixed(0),
+            }),
       );
       return;
     }
@@ -564,7 +588,15 @@ export function TemplateManager() {
                         {template.footer_text}
                       </p>
                     )}
-                    {(template.rejection_reason || template.submission_error) && (
+                    {/* submission_error records the last failed edit/submit
+                        attempt, but doesn't get cleared just because the
+                        template goes back to being fine — an APPROVED
+                        template IS fine (that failed attempt never took
+                        effect), so showing a permanent red "error" banner
+                        under a healthy, live template is misleading. Only
+                        surface it for statuses where it's still actionable. */}
+                    {(template.rejection_reason ||
+                      (template.submission_error && statusKey !== 'APPROVED')) && (
                       <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/20 border border-red-900/40 rounded px-2 py-1.5">
                         <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
                         <span>
@@ -804,16 +836,18 @@ export function TemplateManager() {
 
               {headerNeedsMedia && (
                 <div className="space-y-2 mt-2">
-                  {form.header_format === 'image' && (
+                  {(form.header_format === 'image' ||
+                    form.header_format === 'video' ||
+                    form.header_format === 'document') && (
                     <div className="flex items-center gap-2">
                       <input
                         ref={headerFileRef}
                         type="file"
-                        accept="image/jpeg,image/png"
+                        accept={HEADER_MEDIA_ACCEPT[form.header_format].join(',')}
                         className="hidden"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
-                          if (f) void handleHeaderImageFile(f);
+                          if (f) void handleHeaderMediaFile(f);
                           e.target.value = '';
                         }}
                       />
@@ -829,10 +863,18 @@ export function TemplateManager() {
                         ) : (
                           <Upload className="h-3.5 w-3.5" />
                         )}
-                        {t('uploadImage')}
+                        {form.header_format === 'image'
+                          ? t('uploadImage')
+                          : form.header_format === 'video'
+                            ? t('uploadVideo')
+                            : t('uploadDocument')}
                       </Button>
                       <span className="text-[11px] text-muted-foreground">
-                        {t('uploadHint')}
+                        {form.header_format === 'image'
+                          ? t('uploadHint')
+                          : form.header_format === 'video'
+                            ? t('uploadHintVideo')
+                            : t('uploadHintDocument')}
                       </span>
                     </div>
                   )}
