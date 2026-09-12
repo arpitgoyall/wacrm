@@ -24,14 +24,51 @@ export interface MetaPhoneInfo {
 }
 
 interface MetaErrorResponse {
-  error?: { message?: string; code?: number; type?: string }
+  error?: {
+    message?: string
+    code?: number
+    type?: string
+    error_subcode?: number
+    /** Meta's human-facing explanation — usually far more specific
+     *  than `message` (which is often a generic bucket like "Invalid
+     *  parameter" shared by dozens of distinct failures). */
+    error_user_title?: string
+    error_user_msg?: string
+    /** Field-level validation detail (e.g. which template component
+     *  or parameter was rejected and why). Present on many 4xx
+     *  template-submission/edit failures. */
+    error_data?: { details?: string }
+    fbtrace_id?: string
+  }
 }
 
+/**
+ * Surface the most specific string Meta gave us, in descending order
+ * of usefulness: field-level validation detail, then the human-facing
+ * user message/title, then the generic developer `message` (this is
+ * often just "Invalid parameter" for a dozen unrelated causes — e.g.
+ * issue where a template category-change request failed with nothing
+ * more actionable than that), then the caller's fallback.
+ *
+ * The full raw error is always logged server-side (with fbtrace_id)
+ * even when we can only show the user something generic, so a report
+ * of "it just says Invalid parameter" is diagnosable from the logs.
+ */
 async function throwMetaError(response: Response, fallback: string): Promise<never> {
   let message = fallback
   try {
     const data = (await response.json()) as MetaErrorResponse
-    if (data.error?.message) message = data.error.message
+    const err = data.error
+    if (err) {
+      console.error('[meta-api] Graph API error:', JSON.stringify(err))
+      message =
+        err.error_data?.details ||
+        (err.error_user_title && err.error_user_msg
+          ? `${err.error_user_title}: ${err.error_user_msg}`
+          : err.error_user_msg) ||
+        err.message ||
+        fallback
+    }
   } catch {
     // response body wasn't JSON — keep the fallback
   }

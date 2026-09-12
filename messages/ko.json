@@ -1517,17 +1517,7 @@
       "toastInvalidImage": "헤더 이미지는 JPEG 또는 PNG여야 합니다.",
       "toastImageTooLarge": "이미지 크기가 {size}MB입니다 — Meta 제한은 5MB입니다.",
       "toastUploadSuccess": "이미지가 업로드되었습니다.",
-      "toastUploadFailed": "업로드에 실패했습니다.",
-      "requestCategoryChangeTitle": "이 템플릿을 {category} 카테고리로 변경해 달라고 Meta에 요청합니다",
-      "requestCategoryChangeLabel": "{category}(으)로 카테고리 변경 요청",
-      "requestCategoryChangeShort": "→ {category}",
-      "categoryChangeDialogTitle": "카테고리 변경을 요청할까요?",
-      "categoryChangeDialogDesc": "\"{name}\" 템플릿을 {from}에서 {to}(으)로 변경해 달라고 Meta에 요청합니다. 템플릿이 재심사 대상이 되어 상태가 PENDING으로 바뀌며, Meta가 응답할 때까지는 현재 카테고리가 유지됩니다.",
-      "categoryChangeConfirm": "변경 요청",
-      "categoryChangeRequesting": "요청 중…",
-      "toastCategoryChangeSuccess": "{category}(으)로 카테고리 변경을 요청했습니다 — Meta는 보통 24시간 이내에 검토합니다.",
-      "toastCategoryChangeDry": "{category}(으)로 카테고리 변경을 저장했습니다 (드라이런 — Meta 호출 없음)",
-      "toastCategoryChangeFailed": "카테고리 변경 요청에 실패했습니다"
+      "toastUploadFailed": "업로드에 실패했습니다."
     },
     "roles": {
       "admin": "관리자",
@@ -1638,7 +1628,8 @@
       "fields": "필드 & 태그",
       "deals": "딜 & 통화",
       "members": "팀원",
-      "api": "API 키"
+      "api": "API 키",
+      "notifications": "알림"
     },
     "groups": {
       "account": "계정",

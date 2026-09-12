@@ -1517,17 +1517,7 @@
       "toastInvalidImage": "Header image must be a JPEG or PNG.",
       "toastImageTooLarge": "Image is {size} MB — Meta's limit is 5 MB.",
       "toastUploadSuccess": "Image uploaded.",
-      "toastUploadFailed": "Upload failed.",
-      "requestCategoryChangeTitle": "Ask Meta to recategorize this template as {category}",
-      "requestCategoryChangeLabel": "Request category change to {category}",
-      "requestCategoryChangeShort": "→ {category}",
-      "categoryChangeDialogTitle": "Request category change?",
-      "categoryChangeDialogDesc": "Ask Meta to recategorize \"{name}\" from {from} to {to}. This resubmits the template for review — status flips back to PENDING until Meta responds, and it keeps its current category until then.",
-      "categoryChangeConfirm": "Request change",
-      "categoryChangeRequesting": "Requesting…",
-      "toastCategoryChangeSuccess": "Category change to {category} requested — Meta typically reviews within 24 hours.",
-      "toastCategoryChangeDry": "Category change to {category} saved (dry-run — no Meta call)",
-      "toastCategoryChangeFailed": "Failed to request category change"
+      "toastUploadFailed": "Upload failed."
     },
     "roles": {
       "admin": "Admin",
@@ -1638,7 +1628,8 @@
       "fields": "Fields & tags",
       "deals": "Deals & currency",
       "members": "Team members",
-      "api": "API keys"
+      "api": "API keys",
+      "notifications": "Notifications"
     },
     "groups": {
       "account": "Account",

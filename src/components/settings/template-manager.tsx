@@ -12,7 +12,6 @@ import {
   Pencil,
   RotateCcw,
   Upload,
-  ArrowLeftRight,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -146,14 +145,6 @@ export function TemplateManager() {
   // doesn't take the template off Meta as well as locally.
   const [templateToDelete, setTemplateToDelete] =
     useState<MessageTemplate | null>(null);
-  // Template selected for the category-change confirm dialog — a
-  // lighter-weight path than the full Edit dialog for the common
-  // "request Marketing ⇄ Utility recategorization" ask. Reuses the
-  // same PATCH /[id] endpoint with only `category` flipped.
-  const [categoryChangeTarget, setCategoryChangeTarget] =
-    useState<MessageTemplate | null>(null);
-  const [requestingCategoryChange, setRequestingCategoryChange] =
-    useState(false);
   // Header-image upload (issue #230). Uploads to the account-scoped
   // chat-media bucket and stores the public URL in header_media_url; the
   // submit route turns that into a Meta Resumable-Upload handle.
@@ -378,63 +369,6 @@ export function TemplateManager() {
       toast.error(err instanceof Error ? err.message : t('toastDeleteError'));
     } finally {
       setDeletingId(null);
-    }
-  }
-
-  /** The other side of the Marketing ⇄ Utility toggle for a template. */
-  function otherCategory(
-    category: MessageTemplate['category'],
-  ): 'Marketing' | 'Utility' {
-    return category === 'Marketing' ? 'Utility' : 'Marketing';
-  }
-
-  async function confirmCategoryChange() {
-    const target = categoryChangeTarget;
-    if (!target || requestingCategoryChange) return;
-    const newCategory = otherCategory(target.category);
-    setRequestingCategoryChange(true);
-    try {
-      // Re-send the template exactly as stored, with only `category`
-      // flipped — Meta's edit endpoint replaces components wholesale,
-      // so the unchanged content has to ride along even though this
-      // is conceptually a category-only request.
-      const res = await fetch(`/api/whatsapp/templates/${target.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: target.name,
-          category: newCategory,
-          language: target.language || 'en_US',
-          header_type: target.header_type,
-          header_content: target.header_content,
-          header_media_url: target.header_media_url,
-          header_handle: target.header_handle,
-          body_text: target.body_text,
-          footer_text: target.footer_text,
-          buttons: target.buttons,
-          sample_values: target.sample_values,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(
-          data?.error || `Category change request failed (HTTP ${res.status})`,
-        );
-      }
-      await fetchTemplates();
-      toast.success(
-        data.dry_run
-          ? t('toastCategoryChangeDry', { category: newCategory })
-          : t('toastCategoryChangeSuccess', { category: newCategory }),
-      );
-      setCategoryChangeTarget(null);
-    } catch (err) {
-      console.error('Category change error:', err);
-      toast.error(
-        err instanceof Error ? err.message : t('toastCategoryChangeFailed'),
-      );
-    } finally {
-      setRequestingCategoryChange(false);
     }
   }
 
@@ -666,28 +600,6 @@ export function TemplateManager() {
                         {t('resubmit')}
                       </Button>
                     )}
-                    {(statusKey === 'APPROVED' ||
-                      statusKey === 'REJECTED' ||
-                      statusKey === 'PAUSED') &&
-                      template.category !== 'Authentication' && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setCategoryChangeTarget(template)}
-                          title={t('requestCategoryChangeTitle', {
-                            category: otherCategory(template.category),
-                          })}
-                          aria-label={t('requestCategoryChangeLabel', {
-                            category: otherCategory(template.category),
-                          })}
-                          className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                        >
-                          <ArrowLeftRight className="size-3.5" />
-                          {t('requestCategoryChangeShort', {
-                            category: otherCategory(template.category),
-                          })}
-                        </Button>
-                      )}
                     <Button
                       variant="ghost"
                       size="icon"
@@ -1217,51 +1129,6 @@ export function TemplateManager() {
         </DialogContent>
       </Dialog>
 
-      {/* Category-change confirm dialog. Re-sends the template as-is with
-          only `category` flipped — Meta re-reviews it like any other
-          edit, so status flips back to PENDING until it responds. */}
-      <Dialog
-        open={categoryChangeTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setCategoryChangeTarget(null);
-        }}
-      >
-        <DialogContent className="bg-popover border-border sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="text-popover-foreground">
-              {t('categoryChangeDialogTitle')}
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              {categoryChangeTarget &&
-                t('categoryChangeDialogDesc', {
-                  name: categoryChangeTarget.name,
-                  from: categoryChangeTarget.category,
-                  to: otherCategory(categoryChangeTarget.category),
-                })}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="bg-popover border-border">
-            <Button
-              variant="outline"
-              onClick={() => setCategoryChangeTarget(null)}
-              disabled={requestingCategoryChange}
-              className="border-border text-muted-foreground hover:bg-muted"
-            >
-              {t('cancel')}
-            </Button>
-            <Button onClick={confirmCategoryChange} disabled={requestingCategoryChange}>
-              {requestingCategoryChange ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  {t('categoryChangeRequesting')}
-                </>
-              ) : (
-                t('categoryChangeConfirm')
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }
