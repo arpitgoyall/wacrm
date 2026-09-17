@@ -29,10 +29,11 @@ export default function SignupPage() {
 function SignupPageInner() {
   const searchParams = useSearchParams();
   // When the user lands here from `/join/<token>` we carry the
-  // invite token in the query so it survives the signup → email
-  // verification → redirect round-trip. `emailRedirectTo` below
-  // points back at /join/<token> so the user lands on the redeem
-  // step after verifying instead of being dropped on /dashboard.
+  // invite token in the query so it survives signup → redirect.
+  // `emailRedirectTo` below points back at /join/<token> so that if
+  // this Supabase project ever has email confirmation switched back
+  // on, the user still lands on the redeem step after verifying
+  // instead of being dropped on /dashboard.
   const inviteToken = searchParams.get("invite");
 
   const [fullName, setFullName] = useState("");
@@ -68,7 +69,7 @@ function SignupPageInner() {
       ? `${window.location.origin}/join/${encodeURIComponent(inviteToken)}`
       : undefined;
 
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -82,6 +83,24 @@ function SignupPageInner() {
     if (error) {
       setError(error.message);
       setLoading(false);
+      return;
+    }
+
+    // With email confirmation switched off (Dashboard → Authentication
+    // → Sign In / Providers → Email → "Confirm email"), signUp returns
+    // an active session immediately — the account is ready to use with
+    // no inbox round-trip. Skip straight to the app in that case; the
+    // "check your email" card below only shows up if this project ever
+    // has confirmation turned back on and signUp doesn't return a
+    // session.
+    if (data.session) {
+      const destination = inviteToken
+        ? `/join/${encodeURIComponent(inviteToken)}`
+        : "/dashboard";
+      // Full-page navigation so the browser carries the just-written
+      // Supabase auth cookies to the middleware gating /dashboard —
+      // same reasoning as the login page.
+      window.location.href = destination;
       return;
     }
 
@@ -143,7 +162,7 @@ function SignupPageInner() {
           </CardTitle>
           <CardDescription className="text-muted-foreground">
             {inviteToken
-              ? "Verify your email, then accept the invitation to join your team."
+              ? "Create your account, then accept the invitation to join your team."
               : "Get started with CRM Template for WhatsApp"}
           </CardDescription>
         </CardHeader>
