@@ -1429,3 +1429,83 @@ async function startNewRun(
     outcome: outcome.outcome === "advanced" ? "started" : outcome.outcome,
   };
 }
+
+/**
+ * Start a run for `flow` against `opts.contactId`, outside the normal
+ * inbound-message path — used by the owner-triggered "Run manually"
+ * action (`POST /api/flows/[id]/run`).
+ *
+ * Mirrors `startNewRun`: same INSERT shape, same
+ * `idx_one_active_run_per_contact` race handling (a `contact_id` with
+ * an existing active run — for this flow or any other — returns
+ * `duplicate_inbound_ignored`, same as a real inbound message would),
+ * same advance loop. Differs only in provenance: `user_id` is the
+ * acting owner (not the flow's author), there's no CTWA referral to
+ * seed, and the "message" that seeds `vars.last_message` is a
+ * synthetic empty text — which `seedLastMessageVar` ignores, so no
+ * fake customer text leaks into condition nodes.
+ */
+export async function startManualFlowRun(
+  db: AdminClient,
+  flow: FlowRow,
+  opts: {
+    accountId: string;
+    userId: string;
+    contactId: string;
+    conversationId: string;
+  },
+): Promise<DispatchInboundResult> {
+  const { data: inserted, error: insErr } = await db
+    .from("flow_runs")
+    .insert({
+      flow_id: flow.id,
+      account_id: opts.accountId,
+      // Acting owner, not flow.user_id — this is an on-demand trigger,
+      // not the flow's own automatic dispatch.
+      user_id: opts.userId,
+      contact_id: opts.contactId,
+      conversation_id: opts.conversationId,
+      status: "active",
+      current_node_key: flow.entry_node_id,
+    })
+    .select("*")
+    .maybeSingle();
+  if (insErr) {
+    const msg = insErr.message ?? "";
+    if (msg.includes("23505") || msg.includes("duplicate key")) {
+      return { consumed: true, outcome: "duplicate_inbound_ignored" };
+    }
+    console.error("[flows] startManualFlowRun insert error:", insErr.message);
+    return { consumed: false, outcome: "no_match" };
+  }
+  const run = inserted as FlowRunRow;
+
+  const syntheticMessage: ParsedInbound = {
+    kind: "text",
+    text: "",
+    meta_message_id: `manual:${crypto.randomUUID()}`,
+  };
+  seedLastMessageVar(run, syntheticMessage);
+
+  await logEvent(db, run.id, "started", flow.entry_node_id, {
+    flow_id: flow.id,
+    trigger_type: flow.trigger_type,
+    trigger_source: "manual",
+    triggered_by: opts.userId,
+  });
+
+  const { error: incErr } = await db.rpc("increment_flow_execution_count", {
+    p_flow_id: flow.id,
+  });
+  if (incErr) {
+    console.error("[flows] execution_count rpc error:", incErr.message);
+  }
+
+  const nodes = await loadAllNodes(db, flow.id);
+  const outcome = await advanceFromNodeKey(db, run, flow.entry_node_id!, nodes);
+  return {
+    consumed: true,
+    flow_run_id: run.id,
+    outcome: outcome.outcome === "advanced" ? "started" : outcome.outcome,
+  };
+}

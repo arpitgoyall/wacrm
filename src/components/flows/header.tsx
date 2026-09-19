@@ -23,12 +23,14 @@
  */
 
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import {
   ArrowLeft,
   CircleDot,
   History,
   Loader2,
   PauseCircle,
+  Play,
   PlayCircle,
   Save,
   Trash2,
@@ -37,13 +39,17 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
 import {
   useFlowEditor,
   type BuilderState,
 } from "./flow-editor-state";
+import { RunFlowDialog } from "./run-flow-dialog";
 
 export function EditorHeader() {
   const router = useRouter();
+  const { isOwner } = useAuth();
+  const [runDialogOpen, setRunDialogOpen] = useState(false);
   const {
     flow,
     state,
@@ -149,6 +155,18 @@ export function EditorHeader() {
               Activate
             </Button>
           )}
+          {isOwner && state.status === "active" && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={dirty}
+              title={dirty ? "Save your changes first" : undefined}
+              onClick={() => setRunDialogOpen(true)}
+            >
+              <Play className="h-3.5 w-3.5" />
+              Run manually
+            </Button>
+          )}
           <Button onClick={() => void save()} disabled={saving} size="sm">
             {saving ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -170,6 +188,15 @@ export function EditorHeader() {
         aria-label="Flow description"
         className="w-full max-w-[78ch] rounded-md border border-transparent bg-transparent px-2 py-1 text-[13px] text-muted-foreground outline-none transition-colors placeholder:text-muted-foreground/60 hover:bg-muted/50 focus:border-primary focus:bg-transparent focus:text-foreground"
       />
+
+      {isOwner && (
+        <RunFlowDialog
+          open={runDialogOpen}
+          onOpenChange={setRunDialogOpen}
+          flowId={flow.id}
+          flowName={state.name}
+        />
+      )}
     </div>
   );
 }
