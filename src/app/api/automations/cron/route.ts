@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { resumePendingExecution } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
-import { drainDealStageEvents } from '@/lib/automations/deal-stage-cron'
 import { syncMetaAds } from '@/lib/ads/meta-sync-run'
 import { sweepSlaBreaches } from '@/lib/notifications/sla'
 import { checkCronAuth } from '@/lib/cron-auth'
@@ -78,7 +77,6 @@ export async function GET(request: Request) {
   }
 
   // Deal-stage-change outbox → `deal_stage_changed` automations.
-  const dealStageProcessed = await drainDealStageEvents()
 
   // Meta Marketing API sync (spend / structure for the Ads dashboard).
   // Self-throttled per account to ~hourly, so calling it every cron
@@ -95,7 +93,6 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     processed,
-    dealStageProcessed,
     adSync,
     slaSweep,
   })

@@ -19,7 +19,6 @@ import type {
   AssignDealStepConfig,
   AssignConversationStepConfig,
   DealStageChangedTriggerConfig,
-  SendMetaCapiEventStepConfig,
 } from '@/types'
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
@@ -29,6 +28,12 @@ import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { sendCtwaConversion } from './ctwa-capi'
 import { decrypt } from '@/lib/whatsapp/encryption'
+
+interface LegacyMetaCapiStepConfig {
+  event_name: string
+  value?: string
+  currency?: string
+}
 
 // ------------------------------------------------------------
 // Public API
@@ -435,7 +440,9 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
 async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string> {
   const db = supabaseAdmin()
 
-  switch (step.step_type) {
+  // Cast to string so old, no-longer-authorable step rows can fail cleanly
+  // during the deployment in which migration 065 removes them.
+  switch (step.step_type as string) {
     case 'send_message': {
       const cfg = step.step_config as SendMessageStepConfig
       if (!args.contactId) throw new Error('send_message needs a contact')
@@ -711,7 +718,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     }
 
     case 'send_meta_capi_event': {
-      const cfg = step.step_config as SendMetaCapiEventStepConfig
+      const cfg = step.step_config as unknown as LegacyMetaCapiStepConfig
       const eventName = (cfg.event_name ?? '').trim()
       if (!eventName) throw new Error('send_meta_capi_event needs an event_name')
 

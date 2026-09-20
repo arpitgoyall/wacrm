@@ -26,7 +26,6 @@ import {
   Hourglass,
   GitBranch,
   Webhook,
-  TrendingUp,
   CircleSlash,
   Zap,
   Loader2,
@@ -122,7 +121,6 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
   wait: { label: "wait", icon: Hourglass, border: "border-l-border" },
   condition: { label: "condition", icon: GitBranch, border: "border-l-amber-500" },
   send_webhook: { label: "send_webhook", icon: Webhook, border: "border-l-primary" },
-  send_meta_capi_event: { label: "send_meta_capi_event", icon: TrendingUp, border: "border-l-primary" },
   close_conversation: { label: "close_conversation", icon: CircleSlash, border: "border-l-primary" },
 }
 
@@ -140,7 +138,6 @@ const ADDABLE_STEPS: AutomationStepType[] = [
   "wait",
   "condition",
   "send_webhook",
-  "send_meta_capi_event",
   "close_conversation",
 ]
 
@@ -204,8 +201,6 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
       return { subject: "tag_presence", operand: "", value: "" }
     case "send_webhook":
       return { url: "", headers: {}, body_template: "" }
-    case "send_meta_capi_event":
-      return { event_name: "Purchase", value: "", currency: "" }
     case "close_conversation":
       return {}
     default:
@@ -1645,40 +1640,6 @@ function StepEditor({
           </FieldBlock>
         </>
       )
-    case "send_meta_capi_event":
-      return (
-        <>
-          <FieldBlock label={t("config.eventNameLabel")}>
-            <Input
-              placeholder={t("config.placeholderEventName")}
-              value={(cfg.event_name as string) ?? ""}
-              onChange={(e) => set({ event_name: e.target.value })}
-              className="bg-muted text-foreground"
-            />
-          </FieldBlock>
-          <div className="grid grid-cols-2 gap-2">
-            <FieldBlock label={t("config.valueLabel")}>
-              <Input
-                placeholder="{{ deal.value }}"
-                value={(cfg.value as string) ?? ""}
-                onChange={(e) => set({ value: e.target.value })}
-                className="bg-muted font-mono text-xs text-foreground"
-              />
-            </FieldBlock>
-            <FieldBlock label={t("config.currencyLabel")}>
-              <Input
-                placeholder={t("config.placeholderCurrency")}
-                value={(cfg.currency as string) ?? ""}
-                onChange={(e) => set({ currency: e.target.value })}
-                className="bg-muted text-foreground"
-              />
-            </FieldBlock>
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            {t("config.metaCapiHint")}
-          </p>
-        </>
-      )
     case "close_conversation":
       return (
         <p className="text-xs text-muted-foreground">
@@ -1720,8 +1681,6 @@ function previewFor(step: BuilderStep): string {
       return `when ${step.step_config.subject ?? "?"}`
     case "send_webhook":
       return (step.step_config.url as string) || "no url"
-    case "send_meta_capi_event":
-      return `Meta CAPI: ${(step.step_config.event_name as string) || "no event"}`
     default:
       return ""
   }

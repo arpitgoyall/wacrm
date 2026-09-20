@@ -542,7 +542,6 @@ export type AutomationStepType =
   | 'wait'
   | 'condition'
   | 'send_webhook'
-  | 'send_meta_capi_event'
   | 'close_conversation';
 
 export type AutomationLogStatus = 'success' | 'partial' | 'failed';
@@ -684,34 +683,10 @@ export interface SendWebhookStepConfig {
   headers?: Record<string, string>;
   body_template?: string;
 }
-
-/**
- * Send a conversion event to Meta's Conversions API for Business
- * Messaging, attributing a closed deal back to the Click-to-WhatsApp ad
- * the contact came from. No-ops when the contact has no stored
- * `ctwa_clid` (deal didn't originate from a CTWA ad) or the account has
- * no `ctwa_dataset_id` / `ctwa_capi_token` on `whatsapp_config`.
- *
+/*
  * Dedup: one event per (deal, stage, event_name) — enforced by
  * `ctwa_conversion_dispatches` — so re-entering the stage won't double
- * count.
- */
-export interface SendMetaCapiEventStepConfig {
-  /** Meta standard event name (e.g. "Purchase", "Lead") or a custom one. */
-  event_name: string;
-  /**
-   * Optional monetary value for `custom_data.value`. Supports
-   * `{{ deal.value }}` / `{{ vars.* }}` interpolation. Falls back to the
-   * deal's own `value` column when blank.
-   */
-  value?: string;
-  /**
-   * ISO 4217 currency for `custom_data.currency`. Supports
-   * interpolation; falls back to the deal's `currency` column, then USD.
-   */
-  currency?: string;
-}
-
+*/
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendButtonsStepConfig
@@ -725,7 +700,6 @@ export type AutomationStepConfig =
   | WaitStepConfig
   | ConditionStepConfig
   | SendWebhookStepConfig
-  | SendMetaCapiEventStepConfig
   | Record<string, never>
   | Record<string, unknown>;
 
