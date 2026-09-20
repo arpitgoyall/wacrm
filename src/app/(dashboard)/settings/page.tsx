@@ -64,9 +64,16 @@ function SettingsPageInner() {
   }, [accountRole, profileLoading, router, section]);
 
   const go = (next: SettingsSection) => {
+    if (next === section) return;
     const params = new URLSearchParams(searchParams.toString());
     params.set('tab', next);
-    router.replace(`/settings?${params.toString()}`, { scroll: false });
+
+    // Every settings panel is already a client component in this page, so
+    // changing `?tab=` does not need a server navigation. Using the native
+    // history API keeps `useSearchParams` in sync without starting an RSC
+    // request that can leave the page waiting (and apparently unclickable)
+    // on a slow or interrupted connection.
+    window.history.replaceState(null, '', `/settings?${params.toString()}`);
   };
 
   // Cheap, fetch-free rail hints. The Overview landing carries the

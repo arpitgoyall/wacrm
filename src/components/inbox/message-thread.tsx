@@ -312,7 +312,73 @@ export function MessageThread({
       if (error) {
         console.error("Failed to fetch messages:", error);
       } else {
-        onMessagesLoadedRef.current(data ?? []);
+        const loadedMessages = (data ?? []) as Message[];
+        const templateNames = Array.from(
+          new Set(
+            loadedMessages
+              .filter(
+                (message) =>
+                  message.content_type === "template" &&
+                  message.template_name &&
+                  (!message.media_url || !message.media_type),
+              )
+              .map((message) => message.template_name as string),
+          ),
+        );
+
+        if (templateNames.length === 0) {
+          onMessagesLoadedRef.current(loadedMessages);
+        } else {
+          // Older template-message rows stored only template_name and body.
+          // Hydrate their header media from the account template catalog so
+          // historical image/video/document sends render realistically too.
+          const { data: templateRows, error: templateError } = await supabase
+            .from("message_templates")
+            .select("name, header_type, header_media_url, header_handle")
+            .in("name", templateNames);
+
+          if (cancelled) return;
+          if (templateError) {
+            console.error("Failed to hydrate template media:", templateError);
+            onMessagesLoadedRef.current(loadedMessages);
+          } else {
+            const mediaByName = new Map(
+              (templateRows ?? []).map((template) => {
+                const handle = template.header_handle?.trim();
+                return [
+                  template.name,
+                  {
+                    media_type: template.header_type ?? undefined,
+                    media_url:
+                      template.header_media_url?.trim() ||
+                      (handle && /^https?:\/\//i.test(handle)
+                        ? handle
+                        : undefined),
+                  },
+                ] as const;
+              }),
+            );
+
+            onMessagesLoadedRef.current(
+              loadedMessages.map((message) => {
+                if (
+                  message.content_type !== "template" ||
+                  !message.template_name
+                ) {
+                  return message;
+                }
+                const media = mediaByName.get(message.template_name);
+                return media
+                  ? {
+                      ...message,
+                      media_url: message.media_url || media.media_url,
+                      media_type: message.media_type || media.media_type,
+                    }
+                  : message;
+              }),
+            );
+          }
+        }
       }
 
       if (!cancelled) setLoading(false);
@@ -699,6 +765,12 @@ export function MessageThread({
         sender_type: "agent",
         content_type: "template",
         content_text: renderedBody,
+        media_url:
+          template.header_media_url ||
+          (/^https?:\/\//i.test(template.header_handle ?? "")
+            ? template.header_handle
+            : undefined),
+        media_type: template.header_type,
         template_name: template.name,
         status: "sending",
         created_at: new Date().toISOString(),

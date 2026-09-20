@@ -20,6 +20,12 @@ import {
   ChevronRight,
   LayoutTemplate,
   Loader2,
+  FileText,
+  Download,
+  ExternalLink,
+  Phone,
+  Copy,
+  Reply,
 } from "lucide-react";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 import { useTranslations } from "next-intl";
@@ -42,6 +48,102 @@ function renderBodyPreview(body: string, params: string[]): string {
     const value = params[idx];
     return value && value.trim().length > 0 ? value : `{{${raw}}}`;
   });
+}
+
+function InboxTemplatePreview({
+  template,
+  bodyValues,
+  headerValue,
+}: {
+  template: MessageTemplate;
+  bodyValues?: string[];
+  headerValue?: string;
+}) {
+  const values = bodyValues ?? template.sample_values?.body ?? [];
+  const body = renderBodyPreview(template.body_text, values);
+  const header = renderBodyPreview(
+    template.header_content ?? "",
+    headerValue ? [headerValue] : template.sample_values?.header ?? [],
+  );
+  const storedUrl = template.header_media_url?.trim();
+  const handleUrl = template.header_handle?.trim();
+  const mediaUrl =
+    storedUrl || (handleUrl && /^https?:\/\//i.test(handleUrl) ? handleUrl : undefined);
+
+  return (
+    <div className="flex justify-end rounded-lg border border-[#d8d2c8] bg-[#efeae2] p-2">
+      <div className="w-full max-w-sm overflow-hidden rounded-lg bg-[#d9fdd3] text-[#111b21] shadow-sm">
+        {template.header_type === "image" &&
+          (mediaUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={mediaUrl}
+              alt={`${template.name} header`}
+              loading="lazy"
+              className="max-h-52 w-full bg-[#d9e0e3] object-cover"
+            />
+          ) : (
+            <div className="flex h-24 items-center justify-center bg-[#d9e0e3]">
+              <FileText className="size-7 text-[#667781]" />
+            </div>
+          ))}
+        {template.header_type === "video" &&
+          (mediaUrl ? (
+            <video className="max-h-52 w-full bg-black" controls preload="metadata">
+              <source src={mediaUrl} />
+            </video>
+          ) : (
+            <div className="flex h-24 items-center justify-center bg-[#202c33] text-xs text-white/80">
+              Video preview
+            </div>
+          ))}
+        {template.header_type === "document" && (
+          <div className="m-2 flex items-center gap-2 rounded-md bg-white/60 p-2">
+            <span className="flex size-9 items-center justify-center rounded bg-[#e65b65] text-white">
+              <FileText className="size-4" />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-xs font-medium">
+              {template.header_content || `${template.name}.pdf`}
+            </span>
+            {mediaUrl && <Download className="size-4 text-[#667781]" />}
+          </div>
+        )}
+        <div className="space-y-1 px-3 py-2.5">
+          {template.header_type === "text" && header && (
+            <p className="text-sm font-semibold">{header}</p>
+          )}
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{body}</p>
+          {template.footer_text && (
+            <p className="text-[11px] text-[#667781]">{template.footer_text}</p>
+          )}
+          <p className="text-right text-[10px] text-[#667781]">12:00</p>
+        </div>
+        {!!template.buttons?.length && (
+          <div className="divide-y divide-[#cfd8d3] border-t border-[#cfd8d3]">
+            {template.buttons.map((button, index) => {
+              const Icon =
+                button.type === "URL"
+                  ? ExternalLink
+                  : button.type === "PHONE_NUMBER"
+                    ? Phone
+                    : button.type === "COPY_CODE"
+                      ? Copy
+                      : Reply;
+              return (
+                <div
+                  key={`${button.type}-${index}`}
+                  className="flex items-center justify-center gap-2 py-2 text-xs font-medium text-[#008069]"
+                >
+                  <Icon className="size-3.5" />
+                  {button.text}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface UrlButtonSlot {
@@ -189,7 +291,7 @@ export function TemplatePicker({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="border-border bg-popover sm:max-w-lg">
+      <DialogContent className="border-border bg-popover sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-popover-foreground">
             <LayoutTemplate className="h-4 w-4 text-primary" />
@@ -238,9 +340,9 @@ export function TemplatePicker({
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {t.body_text}
-                      </p>
+                      <div className="pointer-events-none mt-2">
+                        <InboxTemplatePreview template={t} />
+                      </div>
                     </div>
                     <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                   </div>
@@ -250,16 +352,13 @@ export function TemplatePicker({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-md border border-border bg-background/50 p-3">
+            <div>
               <p className="mb-1 text-xs text-muted-foreground">{t("preview")}</p>
-              <p className="whitespace-pre-wrap text-sm text-popover-foreground">
-                {renderBodyPreview(selected.body_text, params)}
-              </p>
-              {selected.footer_text && (
-                <p className="mt-2 text-xs italic text-muted-foreground">
-                  {selected.footer_text}
-                </p>
-              )}
+              <InboxTemplatePreview
+                template={selected}
+                bodyValues={params}
+                headerValue={headerText}
+              />
             </div>
             {slots && slots.headerVarCount > 0 && (
               <div className="space-y-1">

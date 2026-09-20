@@ -1,5 +1,5 @@
-import type { AccountRole, TeamType } from "@/lib/auth/roles";
-import type { InteractiveMessagePayload } from "@/lib/whatsapp/interactive";
+import type { AccountRole, TeamType } from '@/lib/auth/roles';
+import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive';
 
 export type {
   InteractiveMessagePayload,
@@ -8,7 +8,7 @@ export type {
   InteractiveButton,
   InteractiveListRow,
   InteractiveListSection,
-} from "@/lib/whatsapp/interactive";
+} from '@/lib/whatsapp/interactive';
 
 export interface Profile {
   id: string;
@@ -107,7 +107,7 @@ export interface AccountInvitation {
   id: string;
   account_id: string;
   /** Roles offered via invite — owner is never offered. */
-  role: Exclude<AccountRole, "owner">;
+  role: Exclude<AccountRole, 'owner'>;
   created_by_user_id: string | null;
   label: string | null;
   created_at: string;
@@ -218,10 +218,7 @@ export interface Conversation {
 // ============================================================
 
 export type NotificationType =
-  | 'conversation_assigned'
-  | 'new_message'
-  | 'new_conversation'
-  | 'sla_breach';
+  'conversation_assigned' | 'new_message' | 'new_conversation' | 'sla_breach';
 
 export interface Notification {
   id: string;
@@ -250,7 +247,8 @@ export type ContentType =
   | 'template'
   /** Customer tapped a reply button or list row on a message we sent. */
   | 'interactive';
-export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+export type MessageStatus =
+  'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Message {
   id: string;
@@ -403,7 +401,19 @@ export interface PipelineStage {
   name: string;
   position: number;
   color: string;
+  /** Fields that only apply while a deal is in this stage. */
+  custom_fields?: StageCustomField[];
   created_at: string;
+}
+
+export interface StageCustomField {
+  /** Stable key used in deals.custom_values, so labels can be renamed safely. */
+  id: string;
+  label: string;
+  /** Older fields without a type are treated as text fields. */
+  type?: 'text' | 'dropdown';
+  options?: string[];
+  required: boolean;
 }
 
 export type DealStatus = 'open' | 'won' | 'lost';
@@ -426,6 +436,9 @@ export interface Deal {
   notes?: string;
   expected_close_date?: string;
   status?: DealStatus;
+  lost_reason?: string | null;
+  /** Values keyed by PipelineStage.custom_fields[].id. */
+  custom_values?: Record<string, string>;
   created_at: string;
   updated_at?: string;
   contact?: Contact;
@@ -433,8 +446,10 @@ export interface Deal {
   assignee?: Profile;
 }
 
-export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
-export type RecipientStatus = 'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
+export type BroadcastStatus =
+  'draft' | 'scheduled' | 'sending' | 'sent' | 'failed';
+export type RecipientStatus =
+  'pending' | 'sent' | 'delivered' | 'read' | 'replied' | 'failed';
 
 export interface Broadcast {
   id: string;

@@ -140,9 +140,26 @@ function MessageContent({
       // before the fix).
       return (
         <div>
+          {message.media_type === "image" && message.media_url && (
+            <MediaImageBubble message={message} onOpen={openMedia} t={t} />
+          )}
+          {message.media_type === "video" && message.media_url && (
+            <MediaVideoBubble message={message} onOpen={openMedia} t={t} />
+          )}
+          {message.media_type === "document" && message.media_url && (
+            <MediaDocumentBubble
+              message={{
+                ...message,
+                content_text: message.template_name
+                  ? `${message.template_name}.pdf`
+                  : t("document"),
+              }}
+              t={t}
+            />
+          )}
           <span
             className={cn(
-              "mb-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
+              "mb-1 mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium",
               isAgent
                 ? "bg-primary-foreground/20 text-primary-foreground"
                 : "bg-primary/20 text-primary",

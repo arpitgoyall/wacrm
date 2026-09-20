@@ -479,7 +479,15 @@ export async function sendMessageToConversation(
       sender_type: 'agent',
       content_type: messageType,
       content_text: persistedText,
-      media_url: mediaUrl || null,
+      media_url:
+        messageType === 'template'
+          ? templateRow?.header_media_url ||
+            (/^https?:\/\//i.test(templateRow?.header_handle ?? '')
+              ? templateRow?.header_handle
+              : null)
+          : mediaUrl || null,
+      media_type:
+        messageType === 'template' ? templateRow?.header_type || null : null,
       template_name: templateName || null,
       interactive_payload:
         messageType === 'interactive' ? interactivePayload : null,

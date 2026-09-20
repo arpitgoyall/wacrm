@@ -12,6 +12,13 @@ import {
   Pencil,
   RotateCcw,
   Upload,
+  FileText,
+  Download,
+  ExternalLink,
+  Phone,
+  Copy,
+  Reply,
+  Search,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -55,7 +62,13 @@ import {
 
 const CATEGORIES = ['Marketing', 'Utility', 'Authentication'] as const;
 type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
-const HEADER_FORMATS: HeaderFormat[] = ['none', 'text', 'image', 'video', 'document'];
+const HEADER_FORMATS: HeaderFormat[] = [
+  'none',
+  'text',
+  'image',
+  'video',
+  'document',
+];
 
 // Meta's per-format constraints for a template MEDIA header — not the
 // same as chat-message attachments (e.g. a template DOCUMENT header
@@ -133,6 +146,167 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
   }
 }
 
+function applySampleValues(text: string, samples: string[] = []) {
+  return text.replace(/\{\{(\d+)\}\}/g, (token, index: string) => {
+    const sample = samples[Number(index) - 1]?.trim();
+    return sample || token;
+  });
+}
+
+function WhatsAppText({ text }: { text: string }) {
+  const parts = text.split(/(```[^`]+```|\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~)/g);
+
+  return (
+    <p className="text-[13px] leading-[1.45] break-words whitespace-pre-wrap text-[#111b21]">
+      {parts.map((part, index) => {
+        if (part.startsWith('```') && part.endsWith('```')) {
+          return (
+            <code
+              key={index}
+              className="rounded bg-black/5 px-1 font-mono text-[12px]"
+            >
+              {part.slice(3, -3)}
+            </code>
+          );
+        }
+        if (part.startsWith('*') && part.endsWith('*')) {
+          return <strong key={index}>{part.slice(1, -1)}</strong>;
+        }
+        if (part.startsWith('_') && part.endsWith('_')) {
+          return <em key={index}>{part.slice(1, -1)}</em>;
+        }
+        if (part.startsWith('~') && part.endsWith('~')) {
+          return <s key={index}>{part.slice(1, -1)}</s>;
+        }
+        return <span key={index}>{part}</span>;
+      })}
+    </p>
+  );
+}
+
+function TemplatePreview({ template }: { template: MessageTemplate }) {
+  const headerText = applySampleValues(
+    template.header_content ?? '',
+    template.sample_values?.header
+  );
+  const bodyText = applySampleValues(
+    template.body_text,
+    template.sample_values?.body
+  );
+  const storedMediaUrl = template.header_media_url?.trim();
+  const syncedMediaUrl = template.header_handle?.trim();
+  const mediaUrl =
+    storedMediaUrl ||
+    (syncedMediaUrl && /^https?:\/\//i.test(syncedMediaUrl)
+      ? syncedMediaUrl
+      : undefined);
+
+  return (
+    <div className="flex justify-end overflow-hidden rounded-xl border border-[#d8d2c8] bg-[#efeae2] p-3 shadow-inner">
+      <div className="w-full max-w-[390px] overflow-hidden rounded-lg bg-[#d9fdd3] shadow-sm ring-1 ring-black/5">
+        {template.header_type === 'image' &&
+          (mediaUrl ? (
+            // Template media can live on the account's configured Supabase
+            // host, so use a native image rather than Next/Image's static
+            // remote-host allowlist. This is the same path as the working
+            // image preview in the create/edit form below.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={mediaUrl}
+              alt={`${template.name} header`}
+              loading="lazy"
+              className="h-44 w-full bg-[#d9e0e3] object-cover"
+            />
+          ) : (
+            <div className="flex h-32 items-center justify-center bg-[#d9e0e3] text-[#667781]">
+              <FileText className="size-8" />
+            </div>
+          ))}
+
+        {template.header_type === 'video' &&
+          (mediaUrl ? (
+            <video
+              className="max-h-56 w-full bg-black"
+              controls
+              preload="metadata"
+            >
+              <source src={mediaUrl} />
+            </video>
+          ) : (
+            <div className="flex h-32 items-center justify-center bg-[#202c33] text-white/80">
+              <span className="rounded-full bg-white/15 px-3 py-2 text-xs">
+                Video preview
+              </span>
+            </div>
+          ))}
+
+        {template.header_type === 'document' && (
+          <a
+            href={mediaUrl || undefined}
+            target={mediaUrl ? '_blank' : undefined}
+            rel="noreferrer"
+            className="m-2 flex items-center gap-3 rounded-md bg-[#f0f2f5] p-3 text-[#111b21]"
+          >
+            <span className="flex size-10 shrink-0 items-center justify-center rounded bg-[#e65b65] text-white">
+              <FileText className="size-5" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">
+                {template.header_content || `${template.name}.pdf`}
+              </span>
+              <span className="block text-[11px] text-[#667781] uppercase">
+                PDF document
+              </span>
+            </span>
+            {mediaUrl && <Download className="size-4 text-[#667781]" />}
+          </a>
+        )}
+
+        <div className="space-y-1.5 px-3 pt-2.5 pb-2.5">
+          {template.header_type === 'text' && headerText && (
+            <p className="text-[13px] leading-snug font-semibold text-[#111b21]">
+              {headerText}
+            </p>
+          )}
+          <WhatsAppText text={bodyText} />
+          {template.footer_text && (
+            <p className="text-[11px] leading-snug text-[#667781]">
+              {template.footer_text}
+            </p>
+          )}
+          <div className="flex justify-end text-[10px] text-[#667781]">
+            12:00
+          </div>
+        </div>
+
+        {!!template.buttons?.length && (
+          <div className="divide-y divide-[#e9edef] border-t border-[#e9edef]">
+            {template.buttons.map((button, index) => {
+              const Icon =
+                button.type === 'URL'
+                  ? ExternalLink
+                  : button.type === 'PHONE_NUMBER'
+                    ? Phone
+                    : button.type === 'COPY_CODE'
+                      ? Copy
+                      : Reply;
+              return (
+                <div
+                  key={`${button.type}-${index}`}
+                  className="flex items-center justify-center gap-2 px-3 py-2 text-center text-xs font-medium text-[#00a884]"
+                >
+                  <Icon className="size-3.5" />
+                  {button.text}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function TemplateManager() {
   const t = useTranslations('Settings.templates');
   const supabase = createClient();
@@ -140,6 +314,7 @@ export function TemplateManager() {
 
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -165,15 +340,32 @@ export function TemplateManager() {
   // in sync with what the user typed.
   const bodyVarCount = useMemo(
     () => extractVariableIndices(form.body_text).length,
-    [form.body_text],
+    [form.body_text]
   );
   const headerVarCount = useMemo(
     () =>
       form.header_format === 'text'
         ? extractVariableIndices(form.header_content).length
         : 0,
-    [form.header_format, form.header_content],
+    [form.header_format, form.header_content]
   );
+
+  const filteredTemplates = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    if (!query) return templates;
+
+    return templates.filter((template) =>
+      [
+        template.name,
+        template.body_text,
+        template.header_content,
+        template.footer_text,
+        template.category,
+        template.status,
+        template.language,
+      ].some((value) => value?.toLocaleLowerCase().includes(query))
+    );
+  }, [searchQuery, templates]);
 
   // Resize body_samples so it always has exactly bodyVarCount entries.
   // (We mutate via setForm in an effect so React owns the state.)
@@ -230,7 +422,8 @@ export function TemplateManager() {
       name: form.name.trim(),
       category: form.category,
       language: form.language.trim() || 'en_US',
-      header_type: form.header_format === 'none' ? undefined : form.header_format,
+      header_type:
+        form.header_format === 'none' ? undefined : form.header_format,
       header_content:
         form.header_format === 'text' ? form.header_content.trim() : undefined,
       header_media_url:
@@ -287,7 +480,8 @@ export function TemplateManager() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
-          data?.error || `${isEdit ? 'Edit' : 'Submit'} failed (HTTP ${res.status})`,
+          data?.error ||
+            `${isEdit ? 'Edit' : 'Submit'} failed (HTTP ${res.status})`
         );
       }
       // Refresh first, then close — re-opening the dialog
@@ -300,7 +494,7 @@ export function TemplateManager() {
             : t('toastSaveNewDry')
           : isEdit
             ? t('toastSubmitEditSuccess')
-            : t('toastSubmitNewSuccess'),
+            : t('toastSubmitNewSuccess')
       );
       setDialogOpen(false);
       setForm(emptyForm);
@@ -317,7 +511,9 @@ export function TemplateManager() {
     if (!user) return;
     setSyncing(true);
     try {
-      const res = await fetch('/api/whatsapp/templates/sync', { method: 'POST' });
+      const res = await fetch('/api/whatsapp/templates/sync', {
+        method: 'POST',
+      });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.error || `Sync failed (HTTP ${res.status})`);
@@ -325,26 +521,30 @@ export function TemplateManager() {
       toast.success(
         t('toastSyncCount', { total: data.total }) +
           (data.inserted || data.updated
-            ? t('toastSyncDetails', { inserted: data.inserted, updated: data.updated })
-            : ''),
+            ? t('toastSyncDetails', {
+                inserted: data.inserted,
+                updated: data.updated,
+              })
+            : '')
       );
       if (Array.isArray(data.errors) && data.errors.length > 0) {
-        const preview = data.errors.slice(0, 3).map(
-          (e: { name: string; language: string; message: string }) =>
-            `${e.name} (${e.language})`,
-        );
+        const preview = data.errors
+          .slice(0, 3)
+          .map(
+            (e: { name: string; language: string; message: string }) =>
+              `${e.name} (${e.language})`
+          );
         const suffix =
           data.errors.length > 3 ? `, +${data.errors.length - 3} more` : '';
-        toast.error(t('toastSyncFailed', { preview: preview.join(', ') + suffix }));
+        toast.error(
+          t('toastSyncFailed', { preview: preview.join(', ') + suffix })
+        );
       }
       if (data.truncated) {
         // Use error (not warning) so the message survives long
         // enough to read — sonner's `warning` auto-dismisses on
         // the same short timer as `success`.
-        toast.error(
-          t('toastSyncTruncated'),
-          { duration: 10000 },
-        );
+        toast.error(t('toastSyncTruncated'), { duration: 10000 });
       }
       await fetchTemplates();
     } catch (err) {
@@ -462,7 +662,7 @@ export function TemplateManager() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="size-6 animate-spin text-primary" />
+        <Loader2 className="text-primary size-6 animate-spin" />
       </div>
     );
   }
@@ -472,15 +672,18 @@ export function TemplateManager() {
 
   async function handleHeaderMediaFile(file: File) {
     const format = form.header_format;
-    if (format !== 'image' && format !== 'video' && format !== 'document') return;
+    if (format !== 'image' && format !== 'video' && format !== 'document')
+      return;
 
-    if (!(HEADER_MEDIA_ACCEPT[format] as readonly string[]).includes(file.type)) {
+    if (
+      !(HEADER_MEDIA_ACCEPT[format] as readonly string[]).includes(file.type)
+    ) {
       toast.error(
         format === 'image'
           ? t('toastInvalidImage')
           : format === 'video'
             ? t('toastInvalidVideo')
-            : t('toastInvalidDocument'),
+            : t('toastInvalidDocument')
       );
       return;
     }
@@ -488,11 +691,13 @@ export function TemplateManager() {
     if (file.size > max) {
       toast.error(
         format === 'image'
-          ? t('toastImageTooLarge', { size: (file.size / 1024 / 1024).toFixed(1) })
+          ? t('toastImageTooLarge', {
+              size: (file.size / 1024 / 1024).toFixed(1),
+            })
           : t('toastFileTooLarge', {
               size: (file.size / 1024 / 1024).toFixed(1),
               max: (max / 1024 / 1024).toFixed(0),
-            }),
+            })
       );
       return;
     }
@@ -521,7 +726,9 @@ export function TemplateManager() {
               disabled={syncing}
               title={t('syncTitle')}
             >
-              <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
+              <RefreshCw
+                className={`size-4 ${syncing ? 'animate-spin' : ''}`}
+              />
               {syncing ? t('syncing') : t('syncFromMeta')}
             </Button>
             <Button onClick={openCreate}>
@@ -532,130 +739,166 @@ export function TemplateManager() {
         }
       />
 
+      {templates.length > 0 && (
+        <div className="relative max-w-md">
+          <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+          <Input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            placeholder={t('searchPlaceholder')}
+            aria-label={t('searchLabel')}
+            className="bg-background pr-9 pl-9"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              aria-label={t('clearSearch')}
+              className="text-muted-foreground hover:text-foreground absolute top-1/2 right-2 flex size-7 -translate-y-1/2 items-center justify-center rounded-md"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {templates.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-muted-foreground text-sm">{t('noTemplates')}</p>
-            <p className="text-muted-foreground text-xs mt-1">
+            <p className="text-muted-foreground mt-1 text-xs">
               {t('createFirst')}
+            </p>
+          </CardContent>
+        </Card>
+      ) : filteredTemplates.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <Search className="text-muted-foreground mb-3 size-6" />
+            <p className="text-foreground text-sm font-medium">
+              {t('noSearchResults')}
+            </p>
+            <p className="text-muted-foreground mt-1 text-xs">
+              {t('tryAnotherSearch')}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-3 xl:grid-cols-2">
-          {templates.map((template) => {
+          {filteredTemplates.map((template) => {
             const statusKey = template.status || 'DRAFT';
             const status = templateStatusConfig[statusKey];
             return (
-              <Card key={template.id}>
-                <CardContent className="flex items-start justify-between pt-4">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-medium text-foreground">{template.name}</h3>
-                      <Badge
-                        className={`text-xs border ${categoryColors[template.category] || ''}`}
-                      >
-                        {template.category}
-                      </Badge>
-                      <Badge className={`text-xs border ${status.classes}`}>
-                        {status.label}
-                      </Badge>
-                      {template.language && (
-                        <span className="text-xs text-muted-foreground uppercase">
-                          {template.language}
-                        </span>
-                      )}
-                      {template.quality_score && (
-                        <span
-                          className={`text-[10px] uppercase font-medium ${
-                            template.quality_score === 'GREEN'
-                              ? 'text-emerald-400'
-                              : template.quality_score === 'YELLOW'
-                                ? 'text-yellow-400'
-                                : 'text-red-400'
-                          }`}
-                          title="Meta quality score"
+              <Card key={template.id} className="overflow-hidden">
+                <CardContent className="space-y-3 pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <h3 className="text-foreground truncate font-medium">
+                        {template.name}
+                      </h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          className={`border text-xs ${categoryColors[template.category] || ''}`}
                         >
-                          {template.quality_score}
-                        </span>
-                      )}
+                          {template.category}
+                        </Badge>
+                        <Badge className={`border text-xs ${status.classes}`}>
+                          {status.label}
+                        </Badge>
+                        {template.language && (
+                          <span className="text-muted-foreground text-xs uppercase">
+                            {template.language}
+                          </span>
+                        )}
+                        {template.quality_score && (
+                          <span
+                            className={`text-[10px] font-medium uppercase ${
+                              template.quality_score === 'GREEN'
+                                ? 'text-emerald-400'
+                                : template.quality_score === 'YELLOW'
+                                  ? 'text-yellow-400'
+                                  : 'text-red-400'
+                            }`}
+                            title="Meta quality score"
+                          >
+                            {template.quality_score}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {template.body_text}
-                    </p>
-                    {template.footer_text && (
-                      <p className="text-xs text-muted-foreground italic">
-                        {template.footer_text}
-                      </p>
-                    )}
-                    {/* submission_error records the last failed edit/submit
+                    <div className="flex shrink-0 items-center gap-1">
+                      {statusKey === 'APPROVED' && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEdit(template)}
+                          title={t('editTitle')}
+                          aria-label={t('editLabel')}
+                          className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
+                        >
+                          <Pencil className="size-3.5" />
+                          {t('edit')}
+                        </Button>
+                      )}
+                      {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEdit(template)}
+                          title={t('resubmitTitle')}
+                          aria-label={t('resubmitLabel')}
+                          className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
+                        >
+                          <RotateCcw className="size-3.5" />
+                          {t('resubmit')}
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setTemplateToDelete(template)}
+                        disabled={deletingId === template.id}
+                        aria-label={
+                          template.meta_template_id
+                            ? t('deleteMetaLocallyAria')
+                            : t('deleteLocallyAria')
+                        }
+                        title={
+                          template.meta_template_id
+                            ? t('deleteMetaLocallyTitle')
+                            : t('deleteLocallyTitle')
+                        }
+                        className="text-muted-foreground h-8 w-8 hover:bg-red-950/30 hover:text-red-400"
+                      >
+                        {deletingId === template.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <TemplatePreview template={template} />
+
+                  {/* submission_error records the last failed edit/submit
                         attempt, but doesn't get cleared just because the
                         template goes back to being fine — an APPROVED
                         template IS fine (that failed attempt never took
                         effect), so showing a permanent red "error" banner
                         under a healthy, live template is misleading. Only
                         surface it for statuses where it's still actionable. */}
-                    {(template.rejection_reason ||
-                      (template.submission_error && statusKey !== 'APPROVED')) && (
-                      <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/20 border border-red-900/40 rounded px-2 py-1.5">
-                        <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
-                        <span>
-                          {template.rejection_reason || template.submission_error}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {statusKey === 'APPROVED' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title={t('editTitle')}
-                        aria-label={t('editLabel')}
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <Pencil className="size-3.5" />
-                        {t('edit')}
-                      </Button>
-                    )}
-                    {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title={t('resubmitTitle')}
-                        aria-label={t('resubmitLabel')}
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <RotateCcw className="size-3.5" />
-                        {t('resubmit')}
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setTemplateToDelete(template)}
-                      disabled={deletingId === template.id}
-                      aria-label={
-                        template.meta_template_id
-                          ? t('deleteMetaLocallyAria')
-                          : t('deleteLocallyAria')
-                      }
-                      title={
-                        template.meta_template_id
-                          ? t('deleteMetaLocallyTitle')
-                          : t('deleteLocallyTitle')
-                      }
-                      className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 h-8 w-8"
-                    >
-                      {deletingId === template.id ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-4" />
-                      )}
-                    </Button>
-                  </div>
+                  {(template.rejection_reason ||
+                    (template.submission_error &&
+                      statusKey !== 'APPROVED')) && (
+                    <div className="flex items-start gap-1.5 rounded border border-red-900/40 bg-red-950/20 px-2 py-1.5 text-xs text-red-400">
+                      <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+                      <span>
+                        {template.rejection_reason || template.submission_error}
+                      </span>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -673,39 +916,41 @@ export function TemplateManager() {
           }
         }}
       >
-        <DialogContent className="bg-popover border-border sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="bg-popover border-border max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-popover-foreground">
               {editingId ? t('dialogEditTitle') : t('dialogNewTitle')}
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
-              {editingId
-                ? t('dialogEditDesc')
-                : t('dialogNewDesc')}
+              {editingId ? t('dialogEditDesc') : t('dialogNewDesc')}
             </DialogDescription>
           </DialogHeader>
 
           {form.category === 'Authentication' && (
             <div className="flex items-start gap-2 rounded border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-300">
-              <AlertCircle className="size-4 mt-0.5 shrink-0" />
-              <p>{t.rich('authWarning', { bold: (chunks) => <strong>{chunks}</strong> })}</p>
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              <p>
+                {t.rich('authWarning', {
+                  bold: (chunks) => <strong>{chunks}</strong>,
+                })}
+              </p>
             </div>
           )}
 
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label className="text-muted-foreground">{t('templateName')}</Label>
+              <Label className="text-muted-foreground">
+                {t('templateName')}
+              </Label>
               <Input
                 placeholder={t('namePlaceholder')}
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 disabled={editingId !== null}
-                className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
               />
-              <p className="text-[11px] text-muted-foreground">
-                {editingId
-                  ? t('nameFixed')
-                  : t('nameHint')}
+              <p className="text-muted-foreground text-[11px]">
+                {editingId ? t('nameFixed') : t('nameHint')}
               </p>
             </div>
 
@@ -721,7 +966,7 @@ export function TemplateManager() {
                     })
                   }
                 >
-                  <SelectTrigger className="w-full bg-muted border-border text-foreground">
+                  <SelectTrigger className="bg-muted border-border text-foreground w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border-border">
@@ -748,18 +993,22 @@ export function TemplateManager() {
                     setForm({ ...form, language: e.target.value })
                   }
                   disabled={editingId !== null}
-                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="bg-muted border-border text-foreground placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60"
                 />
                 <datalist id="template-language-codes">
                   {COMMON_LANGUAGE_CODES.map((code) => (
                     <option key={code} value={code} />
                   ))}
                 </datalist>
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-muted-foreground text-[11px]">
                   {editingId ? (
                     t('langFixed')
                   ) : (
-                    <span>{t.rich('langHint', { code: (chunks) => <code>{chunks}</code> })}</span>
+                    <span>
+                      {t.rich('langHint', {
+                        code: (chunks) => <code>{chunks}</code>,
+                      })}
+                    </span>
                   )}
                 </p>
               </div>
@@ -782,7 +1031,7 @@ export function TemplateManager() {
                   })
                 }
               >
-                <SelectTrigger className="w-full bg-muted border-border text-foreground">
+                <SelectTrigger className="bg-muted border-border text-foreground w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover border-border">
@@ -807,7 +1056,7 @@ export function TemplateManager() {
               </Select>
 
               {form.header_format === 'text' && (
-                <div className="space-y-2 mt-2">
+                <div className="mt-2 space-y-2">
                   <Input
                     id="template-header-text"
                     aria-label="Header text"
@@ -835,7 +1084,7 @@ export function TemplateManager() {
               )}
 
               {headerNeedsMedia && (
-                <div className="space-y-2 mt-2">
+                <div className="mt-2 space-y-2">
                   {(form.header_format === 'image' ||
                     form.header_format === 'video' ||
                     form.header_format === 'document') && (
@@ -843,7 +1092,9 @@ export function TemplateManager() {
                       <input
                         ref={headerFileRef}
                         type="file"
-                        accept={HEADER_MEDIA_ACCEPT[form.header_format].join(',')}
+                        accept={HEADER_MEDIA_ACCEPT[form.header_format].join(
+                          ','
+                        )}
                         className="hidden"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
@@ -869,7 +1120,7 @@ export function TemplateManager() {
                             ? t('uploadVideo')
                             : t('uploadDocument')}
                       </Button>
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="text-muted-foreground text-[11px]">
                         {form.header_format === 'image'
                           ? t('uploadHint')
                           : form.header_format === 'video'
@@ -879,7 +1130,9 @@ export function TemplateManager() {
                     </div>
                   )}
                   <Input
-                    placeholder={t('mediaUrlPlaceholder', { format: form.header_format })}
+                    placeholder={t('mediaUrlPlaceholder', {
+                      format: form.header_format,
+                    })}
                     value={form.header_media_url}
                     onChange={(e) =>
                       setForm({ ...form, header_media_url: e.target.value })
@@ -891,17 +1144,15 @@ export function TemplateManager() {
                     <img
                       src={form.header_media_url}
                       alt="Header sample"
-                      className="max-h-28 rounded-md border border-border object-contain"
+                      className="border-border max-h-28 rounded-md border object-contain"
                     />
                   )}
-                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  <p className="text-muted-foreground text-[11px] leading-relaxed">
                     {form.header_format === 'image'
                       ? t('imageHint')
                       : t('mediaHint')}
-                    {form.header_format === 'video' &&
-                      t('videoHint')}
-                    {form.header_format === 'document' &&
-                      t('documentHint')}
+                    {form.header_format === 'video' && t('videoHint')}
+                    {form.header_format === 'document' && t('documentHint')}
                   </p>
                 </div>
               )}
@@ -919,13 +1170,13 @@ export function TemplateManager() {
                 maxLength={TEMPLATE_LIMITS.bodyMaxLength}
                 className="bg-muted border-border text-foreground placeholder:text-muted-foreground resize-none"
               />
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-muted-foreground text-[11px]">
                 {t.raw('bodyHint')}
               </p>
 
               {bodyVarCount > 0 && (
                 <div className="space-y-1.5 pt-1">
-                  <Label className="text-[11px] text-muted-foreground">
+                  <Label className="text-muted-foreground text-[11px]">
                     {t('sampleValues')}
                   </Label>
                   {form.body_samples.map((val, i) => {
@@ -935,7 +1186,9 @@ export function TemplateManager() {
                         key={i}
                         id={inputId}
                         aria-label={t('sampleAria', { var: `{{${i + 1}}}` })}
-                        placeholder={t('samplePlaceholder', { var: `{{${i + 1}}}` })}
+                        placeholder={t('samplePlaceholder', {
+                          var: `{{${i + 1}}}`,
+                        })}
                         value={val}
                         onChange={(e) => {
                           const next = [...form.body_samples];
@@ -971,15 +1224,17 @@ export function TemplateManager() {
                   variant="outline"
                   size="sm"
                   onClick={addButton}
-                  disabled={form.buttons.length >= TEMPLATE_LIMITS.maxButtonsTotal}
-                  className="border-border bg-transparent text-muted-foreground hover:bg-muted h-7 text-xs"
+                  disabled={
+                    form.buttons.length >= TEMPLATE_LIMITS.maxButtonsTotal
+                  }
+                  className="border-border text-muted-foreground hover:bg-muted h-7 bg-transparent text-xs"
                 >
                   <Plus className="size-3" />
                   {t('addButton')}
                 </Button>
               </div>
               {form.buttons.length === 0 ? (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-muted-foreground text-[11px]">
                   {t('buttonsLimit', { max: TEMPLATE_LIMITS.maxButtonsTotal })}
                 </p>
               ) : (
@@ -987,7 +1242,7 @@ export function TemplateManager() {
                   {form.buttons.map((btn, i) => (
                     <div
                       key={i}
-                      className="space-y-2 rounded border border-border bg-muted/50 p-2"
+                      className="border-border bg-muted/50 space-y-2 rounded border p-2"
                     >
                       <div className="flex items-center gap-2">
                         <Select
@@ -1000,7 +1255,7 @@ export function TemplateManager() {
                             changeButtonType(i, val as TemplateButton['type']);
                           }}
                         >
-                          <SelectTrigger className="w-40 bg-muted border-border text-foreground h-8 text-xs">
+                          <SelectTrigger className="bg-muted border-border text-foreground h-8 w-40 text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent className="bg-popover border-border">
@@ -1037,14 +1292,14 @@ export function TemplateManager() {
                           onChange={(e) =>
                             updateButton(i, { text: e.target.value })
                           }
-                          className="flex-1 bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 text-xs"
+                          className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-8 flex-1 text-xs"
                         />
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           onClick={() => removeButton(i)}
-                          className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 size-7"
+                          className="text-muted-foreground size-7 hover:bg-red-950/30 hover:text-red-400"
                         >
                           <X className="size-3.5" />
                         </Button>
@@ -1137,7 +1392,9 @@ export function TemplateManager() {
       >
         <DialogContent className="bg-popover border-border sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-popover-foreground">{t('deleteDialogTitle')}</DialogTitle>
+            <DialogTitle className="text-popover-foreground">
+              {t('deleteDialogTitle')}
+            </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {templateToDelete?.meta_template_id
                 ? t('deleteMetaDesc', { name: templateToDelete.name })
@@ -1156,7 +1413,7 @@ export function TemplateManager() {
             <Button
               onClick={confirmDelete}
               disabled={deletingId !== null}
-              className="bg-red-600 hover:bg-red-700 text-white"
+              className="bg-red-600 text-white hover:bg-red-700"
             >
               {deletingId !== null ? (
                 <>
@@ -1170,7 +1427,6 @@ export function TemplateManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </section>
   );
 }
