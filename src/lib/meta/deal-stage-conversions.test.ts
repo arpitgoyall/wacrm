@@ -3,7 +3,7 @@ import { metaEventForStage } from './deal-stage-conversions'
 
 describe('metaEventForStage', () => {
   it('maps built-in CRM stages to Meta standard events', () => {
-    expect(metaEventForStage('Qualified')).toBe('Lead')
+    expect(metaEventForStage('Qualified')).toBe('LeadSubmitted')
     expect(metaEventForStage(' enrolled ')).toBe('Purchase')
   })
 

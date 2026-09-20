@@ -3,7 +3,7 @@
 Meta conversion reporting is built in and does not use the automation builder
 or a cron job:
 
-- `Qualified` sends the standard `Lead` event.
+- `Qualified` sends the Business Messaging `LeadSubmitted` event.
 - `Enrolled` sends the standard `Purchase` event with the deal value and INR.
 
 Only deals carrying a Click-to-WhatsApp `ctwa_clid` are eligible. The account

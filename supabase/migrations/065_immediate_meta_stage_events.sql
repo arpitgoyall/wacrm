@@ -15,7 +15,7 @@ ALTER TABLE deal_stage_events
 CREATE INDEX IF NOT EXISTS idx_deal_stage_events_delivery_status
   ON deal_stage_events (delivery_status, created_at);
 
--- Meta conversion reporting is now built in: Qualified -> Lead and
+-- Meta conversion reporting is now built in: Qualified -> LeadSubmitted and
 -- Enrolled -> Purchase. Remove the obsolete automation action and delete
 -- automations that existed solely to host that action.
 DELETE FROM automations a

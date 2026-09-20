@@ -4,12 +4,12 @@ import { sendCtwaConversion } from '@/lib/automations/ctwa-capi'
 
 const IMMEDIATE_RETRY_DELAYS_MS = [0, 250, 750] as const
 
-export type BuiltInMetaEvent = 'Lead' | 'Purchase'
+export type BuiltInMetaEvent = 'LeadSubmitted' | 'Purchase'
 
 export function metaEventForStage(stageName: string): BuiltInMetaEvent | null {
   switch (stageName.trim().toLowerCase()) {
     case 'qualified':
-      return 'Lead'
+      return 'LeadSubmitted'
     case 'enrolled':
       return 'Purchase'
     default:
