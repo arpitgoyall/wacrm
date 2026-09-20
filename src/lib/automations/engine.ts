@@ -825,7 +825,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
           .eq('stage_id', stageId)
           .eq('event_name', eventName)
         throw new Error(
-          `Meta Conversions API returned ${result.status}: ${JSON.stringify(result.body).slice(0, 300)}`,
+          `Meta Conversions API returned ${result.status}: ${JSON.stringify(result.body)}`,
         )
       }
       await db

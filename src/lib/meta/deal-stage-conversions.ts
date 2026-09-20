@@ -138,7 +138,7 @@ export async function dispatchBuiltInDealStageConversion(
         .eq('event_name', eventName)
       return { status: 'sent', eventName, responseStatus: result.status }
     }
-    finalError = `Meta Conversions API returned ${result.status}: ${JSON.stringify(result.body).slice(0, 300)}`
+    finalError = `Meta Conversions API returned ${result.status}: ${JSON.stringify(result.body)}`
   }
 
   await db
