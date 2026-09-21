@@ -71,6 +71,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
           {t(titleKey as string)}
         </h1>
+        <div id="page-header-actions" className="flex min-w-0 items-center" />
       </div>
 
       <div className="flex items-center gap-1 sm:gap-2">

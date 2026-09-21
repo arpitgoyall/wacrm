@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
@@ -8,7 +9,13 @@ import {
   normalizeConversations,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
-import type { Conversation, ConversationStatus, Tag } from "@/types";
+import type {
+  Conversation,
+  ConversationStatus,
+  Pipeline,
+  PipelineStage,
+  Tag,
+} from "@/types";
 import { Search, ChevronDown, X } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -28,6 +35,7 @@ interface ConversationListProps {
   onSelect: (conversation: Conversation) => void;
   conversations: Conversation[];
   onConversationsLoaded: (conversations: Conversation[]) => void;
+  onClearSelection?: () => void;
   /**
    * Increment to force the fetch effect below to refire. The parent
    * bumps this on realtime reconnect / tab visibility → visible so the
@@ -37,25 +45,29 @@ interface ConversationListProps {
   resyncToken?: number;
 }
 
-const STATUS_COLORS: Record<ConversationStatus, string> = {
-  open: "bg-primary",
-  pending: "bg-amber-500",
-  closed: "bg-muted-foreground",
-};
-
-
-
 type InboxFilter = ConversationStatus | "all" | "unread";
+
+interface DealStageLabel {
+  name: string;
+  color: string;
+  pipelineId: string;
+  pipelineIds: string[];
+  stagesByPipeline: Record<
+    string,
+    { id: string; name: string; color: string }
+  >;
+}
 
 export function ConversationList({
   activeConversationId,
   onSelect,
   conversations,
   onConversationsLoaded,
+  onClearSelection,
   resyncToken = 0,
 }: ConversationListProps) {
   const t = useTranslations("Inbox.conversationList");
-  const { isOwner, isAdmin } = useAuth();
+  const { isOwner, isAdmin, account } = useAuth();
   const canViewAssignment = isOwner || isAdmin;
   
   const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
@@ -68,6 +80,12 @@ export function ConversationList({
 
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
+  const [selectedStageId, setSelectedStageId] = useState<string>("all");
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [pipelineStages, setPipelineStages] = useState<PipelineStage[]>([]);
+  const [headerActionsTarget, setHeaderActionsTarget] =
+    useState<HTMLElement | null>(null);
   const [loading, setLoading] = useState(true);
   // Contact-based filters (issue #272). Tags use OR logic (a conversation
   // matches if its contact carries any selected tag), consistent with
@@ -76,6 +94,9 @@ export function ConversationList({
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [agentNames, setAgentNames] = useState<Record<string, string>>({});
+  const [dealStagesByContact, setDealStagesByContact] = useState<
+    Record<string, DealStageLabel>
+  >({});
 
   // Keep the latest callback in a ref so the fetch effect below can
   // have a stable, empty-dep identity. Previously the fetch useCallback
@@ -93,6 +114,13 @@ export function ConversationList({
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
   });
+
+  useEffect(() => {
+    // The dashboard header is outside the inbox page subtree. Portal the
+    // owner-only selector into its dedicated action slot after hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHeaderActionsTarget(document.getElementById("page-header-actions"));
+  }, []);
 
   useEffect(() => {
     const supabase = createClient();
@@ -128,6 +156,126 @@ export function ConversationList({
     // `resyncToken` is included so the parent can force a refetch when
     // the realtime channel reconnects or the tab regains focus — catches
     // up on any events sent while the WS was disconnected or throttled.
+  }, [resyncToken]);
+
+  useEffect(() => {
+    if (!isOwner) return;
+    const supabase = createClient();
+    let cancelled = false;
+    void supabase
+      .from("pipelines")
+      .select("*")
+      .order("name")
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to fetch inbox pipelines:", error);
+          return;
+        }
+        const rows = (data as Pipeline[] | null) ?? [];
+        setPipelines(rows);
+        const salesPipeline =
+          rows.find((pipeline) => pipeline.id === account?.sales_pipeline_id) ??
+          rows.find((pipeline) => /sales/i.test(pipeline.name)) ??
+          rows[0];
+        setSelectedPipelineId((current) => current || salesPipeline?.id || "");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, account?.sales_pipeline_id]);
+
+  useEffect(() => {
+    if (!isOwner || !selectedPipelineId) return;
+    const supabase = createClient();
+    let cancelled = false;
+    void supabase
+      .from("pipeline_stages")
+      .select("id, pipeline_id, name, position, color, created_at")
+      .eq("pipeline_id", selectedPipelineId)
+      .order("position")
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to fetch inbox pipeline stages:", error);
+          return;
+        }
+        setPipelineStages((data as PipelineStage[] | null) ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, selectedPipelineId]);
+
+  // Show the most recent open deal's pipeline stage for each contact. Deals
+  // created from the inbox are contact-linked, so contact_id is the reliable
+  // bridge even for older rows whose optional conversation_id is null.
+  useEffect(() => {
+    const supabase = createClient();
+    let cancelled = false;
+
+    async function loadDealStages() {
+      const { data, error } = await supabase
+        .from("deals")
+        .select(
+          "contact_id, pipeline_id, stage_id, created_at, stage:pipeline_stages(name, color)",
+        )
+        .eq("status", "open")
+        .order("created_at", { ascending: false });
+
+      if (cancelled) return;
+      if (error) {
+        console.error("Failed to fetch inbox deal stages:", error);
+        return;
+      }
+
+      const next: Record<string, DealStageLabel> = {};
+      for (const row of (data ?? []) as unknown as Array<{
+        contact_id: string | null;
+        pipeline_id: string;
+        stage_id: string;
+        stage: DealStageLabel | null;
+      }>) {
+        if (!row.contact_id || !row.stage) continue;
+        if (!next[row.contact_id]) {
+          next[row.contact_id] = {
+            ...row.stage,
+            pipelineId: row.pipeline_id,
+            pipelineIds: [row.pipeline_id],
+            stagesByPipeline: {
+              [row.pipeline_id]: {
+                id: row.stage_id,
+                name: row.stage.name,
+                color: row.stage.color,
+              },
+            },
+          };
+        } else if (!next[row.contact_id].pipelineIds.includes(row.pipeline_id)) {
+          next[row.contact_id].pipelineIds.push(row.pipeline_id);
+          next[row.contact_id].stagesByPipeline[row.pipeline_id] = {
+            id: row.stage_id,
+            name: row.stage.name,
+            color: row.stage.color,
+          };
+        }
+      }
+      setDealStagesByContact(next);
+    }
+
+    void loadDealStages();
+    const channel = supabase
+      .channel("inbox-deal-stages")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "deals" },
+        () => void loadDealStages(),
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      void supabase.removeChannel(channel);
+    };
   }, [resyncToken]);
 
   // Tag definitions for the filter picker — loaded once so labels/colours
@@ -198,6 +346,22 @@ export function ConversationList({
       result = result.filter((c) => c.status === filter);
     }
 
+    if (isOwner && selectedPipelineId) {
+      result = result.filter((conversation) => {
+        const contactId = conversation.contact?.id;
+        const pipelineStage = contactId
+          ? dealStagesByContact[contactId]?.stagesByPipeline[
+              selectedPipelineId
+            ]
+          : undefined;
+        return (
+          !!contactId &&
+          !!pipelineStage &&
+          (selectedStageId === "all" || pipelineStage.id === selectedStageId)
+        );
+      });
+    }
+
     // Contact-based filters (tags via OR logic, exact company match).
     if (selectedTagIds.length > 0 || selectedCompany !== null) {
       result = result.filter((c) =>
@@ -219,7 +383,17 @@ export function ConversationList({
     }
 
     return result;
-  }, [conversations, filter, search, selectedTagIds, selectedCompany]);
+  }, [
+    conversations,
+    filter,
+    search,
+    selectedTagIds,
+    selectedCompany,
+    isOwner,
+    selectedPipelineId,
+    selectedStageId,
+    dealStagesByContact,
+  ]);
 
   const toggleTag = useCallback((id: string) => {
     setSelectedTagIds((prev) =>
@@ -249,12 +423,59 @@ export function ConversationList({
   );
 
   const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
+  const activePipeline = pipelines.find(
+    (pipeline) => pipeline.id === selectedPipelineId,
+  );
+  const activeStage = pipelineStages.find(
+    (stage) => stage.id === selectedStageId,
+  );
+
+  const handlePipelineChange = useCallback(
+    (pipelineId: string) => {
+      setSelectedPipelineId(pipelineId);
+      setSelectedStageId("all");
+      onClearSelection?.();
+    },
+    [onClearSelection],
+  );
 
   return (
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
     <div className="flex h-full w-full flex-col border-r border-border bg-card lg:w-80">
+      {headerActionsTarget && isOwner && pipelines.length > 0
+        ? createPortal(
+            <DropdownMenu>
+              <DropdownMenuTrigger className="inline-flex h-8 max-w-48 items-center justify-center gap-1 rounded-md border border-border bg-muted/50 px-2.5 text-xs text-foreground hover:bg-muted">
+                <span className="truncate">
+                  {activePipeline?.name ?? pipelines[0]?.name}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-64 w-56 border-border bg-popover"
+              >
+                {pipelines.map((pipeline) => (
+                  <DropdownMenuItem
+                    key={pipeline.id}
+                    onClick={() => handlePipelineChange(pipeline.id)}
+                    className={cn(
+                      "text-sm",
+                      selectedPipelineId === pipeline.id
+                        ? "text-primary"
+                        : "text-popover-foreground",
+                    )}
+                  >
+                    {pipeline.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>,
+            headerActionsTarget,
+          )
+        : null}
       {/* Search + Filter */}
       <div className="space-y-2 border-b border-border p-3">
         <div className="relative">
@@ -331,6 +552,57 @@ export function ConversationList({
                       <span className="truncate">{t.name}</span>
                     </span>
                   </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {isOwner && selectedPipelineId && pipelineStages.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger className="inline-flex h-7 max-w-36 items-center justify-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
+                <span className="truncate">
+                  {activeStage?.name ?? t("allStages")}
+                </span>
+                <ChevronDown className="h-3 w-3 shrink-0" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="max-h-64 w-56 border-border bg-popover"
+              >
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSelectedStageId("all");
+                    onClearSelection?.();
+                  }}
+                  className={cn(
+                    "text-sm",
+                    selectedStageId === "all"
+                      ? "text-primary"
+                      : "text-popover-foreground",
+                  )}
+                >
+                  {t("allStages")}
+                </DropdownMenuItem>
+                {pipelineStages.map((stage) => (
+                  <DropdownMenuItem
+                    key={stage.id}
+                    onClick={() => {
+                      setSelectedStageId(stage.id);
+                      onClearSelection?.();
+                    }}
+                    className={cn(
+                      "text-sm",
+                      selectedStageId === stage.id
+                        ? "text-primary"
+                        : "text-popover-foreground",
+                    )}
+                  >
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: stage.color }}
+                    />
+                    {stage.name}
+                  </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
@@ -445,6 +717,15 @@ export function ConversationList({
                 isActive={conv.id === activeConversationId}
                 onSelect={handleSelect}
                 assigneeName={conv.assigned_agent_id ? agentNames[conv.assigned_agent_id] : undefined}
+                dealStage={
+                  conv.contact?.id
+                    ? selectedPipelineId
+                      ? dealStagesByContact[conv.contact.id]?.stagesByPipeline[
+                          selectedPipelineId
+                        ]
+                      : dealStagesByContact[conv.contact.id]
+                    : undefined
+                }
                 showAssignee={canViewAssignment}
                 t={t}
               />
@@ -461,6 +742,7 @@ interface ConversationItemProps {
   isActive: boolean;
   onSelect: (conversation: Conversation) => void;
   assigneeName?: string;
+  dealStage?: Pick<DealStageLabel, "name" | "color">;
   showAssignee: boolean;
   t: ReturnType<typeof useTranslations>;
 }
@@ -470,6 +752,7 @@ function ConversationItem({
   isActive,
   onSelect,
   assigneeName,
+  dealStage,
   showAssignee,
   t,
 }: ConversationItemProps) {
@@ -526,13 +809,18 @@ function ConversationItem({
                 {conversation.unread_count}
               </span>
             )}
-            <span
-              className={cn(
-                "h-2 w-2 rounded-full",
-                STATUS_COLORS[conversation.status]
-              )}
-              title={conversation.status}
-            />
+            {dealStage && (
+              <span
+                className="max-w-24 truncate rounded-full px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: `${dealStage.color}20`,
+                  color: dealStage.color,
+                }}
+                title={dealStage.name}
+              >
+                {dealStage.name}
+              </span>
+            )}
           </div>
         </div>
         {showAssignee && assigneeName && (

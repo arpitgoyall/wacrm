@@ -33,7 +33,9 @@ interface PipelineStageControlProps {
   contactId: string;
   contactLabel: string;
   accountId: string;
-  pipelineId: string;
+  /** Used to create a deal when none exists. Existing deals always use
+   * their own pipeline. */
+  pipelineId?: string | null;
   userId: string;
   /** Current user's `profiles.id` — deals created here auto-assign to
    *  their creator (deals.assigned_to is a FK to profiles.id). */
@@ -44,6 +46,7 @@ interface PipelineStageControlProps {
 interface DealRow {
   id: string;
   stage_id: string;
+  pipeline_id: string;
 }
 
 export function PipelineStageControl({
@@ -70,7 +73,6 @@ export function PipelineStageControl({
       supabase
         .from("pipeline_stages")
         .select("id, pipeline_id, name, position, color, created_at")
-        .eq("pipeline_id", pipelineId)
         .order("position", { ascending: true }),
       // Most recent still-open deal for this contact in this pipeline —
       // mirrors the same "open" filter used by the automation engine's
@@ -78,10 +80,9 @@ export function PipelineStageControl({
       // active one.
       supabase
         .from("deals")
-        .select("id, stage_id")
+        .select("id, stage_id, pipeline_id")
         .eq("account_id", accountId)
         .eq("contact_id", contactId)
-        .eq("pipeline_id", pipelineId)
         .eq("status", "open")
         .order("created_at", { ascending: false })
         .limit(1),
@@ -99,9 +100,13 @@ export function PipelineStageControl({
   }, [load]);
 
   const currentStage = stages.find((s) => s.id === deal?.stage_id) ?? null;
+  const visibleStages = deal
+    ? stages.filter((stage) => stage.pipeline_id === deal.pipeline_id)
+    : stages.filter((stage) => stage.pipeline_id === pipelineId);
 
   async function handleCreateDeal() {
-    if (creating || stages.length === 0) return;
+    const firstStage = visibleStages[0];
+    if (creating || !firstStage || !pipelineId) return;
     setCreating(true);
     const { data, error } = await supabase
       .from("deals")
@@ -109,7 +114,7 @@ export function PipelineStageControl({
         account_id: accountId,
         user_id: userId,
         pipeline_id: pipelineId,
-        stage_id: stages[0].id,
+        stage_id: firstStage.id,
         contact_id: contactId,
         title: contactLabel,
         value: 0,
@@ -118,7 +123,7 @@ export function PipelineStageControl({
         // Auto-assign the new deal to whoever created it.
         assigned_to: assigneeProfileId ?? null,
       })
-      .select("id, stage_id")
+      .select("id, stage_id, pipeline_id")
       .single();
     setCreating(false);
     if (error || !data) {
@@ -157,8 +162,8 @@ export function PipelineStageControl({
       <button
         type="button"
         onClick={handleCreateDeal}
-        disabled={creating || stages.length === 0}
-        title={stages.length === 0 ? t("dealNoStagesHint") : undefined}
+        disabled={creating || visibleStages.length === 0}
+        title={visibleStages.length === 0 ? t("dealNoStagesHint") : undefined}
         className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
       >
         {creating ? t("creatingDeal") : t("createDeal")}
@@ -170,13 +175,14 @@ export function PipelineStageControl({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={updating}
-        className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs text-primary hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+        style={{ color: currentStage?.color }}
       >
         {currentStage?.name ?? t("dealStageUnknown")}
         <ChevronDown className="h-3 w-3" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="border-border bg-popover">
-        {stages.map((stage) => (
+        {visibleStages.map((stage) => (
           <DropdownMenuItem
             key={stage.id}
             onClick={() => handleStageChange(stage.id)}
