@@ -265,6 +265,16 @@ export interface Message {
    */
   media_type?: string | null;
   template_name?: string;
+  /**
+   * Template catalog data attached by the inbox for presentation. This is
+   * intentionally not a messages-table column: historical sends can be
+   * enriched from the current account template without duplicating the
+   * catalog row in every message.
+   */
+  template_preview?: Pick<
+    MessageTemplate,
+    'header_type' | 'header_content' | 'footer_text' | 'buttons'
+  >;
   message_id?: string;
   status: MessageStatus;
   created_at: string;
@@ -686,7 +696,7 @@ export interface SendWebhookStepConfig {
 /*
  * Dedup: one event per (deal, stage, event_name) — enforced by
  * `ctwa_conversion_dispatches` — so re-entering the stage won't double
-*/
+ */
 export type AutomationStepConfig =
   | SendMessageStepConfig
   | SendButtonsStepConfig
