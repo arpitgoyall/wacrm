@@ -26,6 +26,7 @@ import {
   Phone,
   Copy,
   Reply,
+  Search,
 } from "lucide-react";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 import { useTranslations } from "next-intl";
@@ -184,6 +185,7 @@ export function TemplatePicker({
   const t = useTranslations("Inbox.templatePicker");
 
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<MessageTemplate | null>(null);
   const [params, setParams] = useState<string[]>([]);
@@ -242,21 +244,15 @@ export function TemplatePicker({
   }
 
   function handleOpenChange(next: boolean) {
-    if (!next) resetSelection();
+    if (!next) {
+      resetSelection();
+      setSearch("");
+    }
     onOpenChange(next);
   }
 
   function pickTemplate(template: MessageTemplate) {
     const slots = collectVariableSlots(template);
-    const noInputsNeeded =
-      slots.bodyVars.length === 0 &&
-      slots.headerVarCount === 0 &&
-      slots.urlButtonSlots.length === 0;
-    if (noInputsNeeded) {
-      onSelect(template, { body: [] });
-      handleOpenChange(false);
-      return;
-    }
     setSelected(template);
     setParams(new Array(slots.bodyVars.length).fill(""));
     setHeaderText("");
@@ -280,6 +276,17 @@ export function TemplatePicker({
     () => (selected ? collectVariableSlots(selected) : null),
     [selected],
   );
+  const filteredTemplates = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    if (!query) return templates;
+    return templates.filter((template) => {
+      const title =
+        template.header_type === "text" ? template.header_content ?? "" : "";
+      return [template.name, title].some((value) =>
+        value.toLocaleLowerCase().includes(query),
+      );
+    });
+  }, [search, templates]);
   const canConfirm =
     !!selected &&
     !!slots &&
@@ -305,50 +312,76 @@ export function TemplatePicker({
         </DialogHeader>
 
         {!selected ? (
-          <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-            {loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              </div>
-            ) : templates.length === 0 ? (
-              <div className="rounded-md border border-border bg-background/50 p-6 text-center">
-                <p className="text-sm text-popover-foreground">{t("noApprovedTemplates")}</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {t("noApprovedTemplatesHint")}
-                </p>
-              </div>
-            ) : (
-              templates.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => pickTemplate(t)}
-                  className="w-full rounded-md border border-border bg-background/50 p-3 text-left transition-colors hover:border-primary/40 hover:bg-popover"
-                >
-                  <div className="flex items-start gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="truncate text-sm font-medium text-popover-foreground">
-                          {t.name}
-                        </p>
-                        <Badge className="border border-primary/30 bg-primary/20 text-[10px] text-primary">
-                          {t.category}
-                        </Badge>
-                        {t.language && (
-                          <span className="text-[10px] uppercase text-muted-foreground">
-                            {t.language}
-                          </span>
-                        )}
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={t("searchPlaceholder")}
+                className="border-border bg-muted pl-9 text-foreground placeholder:text-muted-foreground"
+                autoFocus
+              />
+            </div>
+            <div className="max-h-[52vh] space-y-2 overflow-y-auto">
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </div>
+              ) : templates.length === 0 ? (
+                <div className="rounded-md border border-border bg-background/50 p-6 text-center">
+                  <p className="text-sm text-popover-foreground">
+                    {t("noApprovedTemplates")}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {t("noApprovedTemplatesHint")}
+                  </p>
+                </div>
+              ) : filteredTemplates.length === 0 ? (
+                <div className="rounded-md border border-border bg-background/50 p-6 text-center text-sm text-muted-foreground">
+                  {t("noSearchResults")}
+                </div>
+              ) : (
+                filteredTemplates.map((template) => {
+                  const title =
+                    template.header_type === "text"
+                      ? template.header_content?.trim()
+                      : "";
+                  return (
+                    <button
+                      key={template.id}
+                      type="button"
+                      onClick={() => pickTemplate(template)}
+                      className="w-full rounded-md border border-border bg-background/50 p-3 text-left transition-colors hover:border-primary/40 hover:bg-popover"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="truncate text-sm font-medium text-popover-foreground">
+                              {template.name}
+                            </p>
+                            <Badge className="border border-primary/30 bg-primary/20 text-[10px] text-primary">
+                              {template.category}
+                            </Badge>
+                            {template.language && (
+                              <span className="text-[10px] uppercase text-muted-foreground">
+                                {template.language}
+                              </span>
+                            )}
+                          </div>
+                          {title && (
+                            <p className="mt-1 truncate text-xs text-muted-foreground">
+                              {title}
+                            </p>
+                          )}
+                        </div>
+                        <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                       </div>
-                      <div className="pointer-events-none mt-2">
-                        <InboxTemplatePreview template={t} />
-                      </div>
-                    </div>
-                    <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                  </div>
-                </button>
-              ))
-            )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
         ) : (
           <div className="space-y-3">

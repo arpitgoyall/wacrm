@@ -278,6 +278,8 @@
       "sendTemplate": "Send template",
       "fillPlaceholders": "Fill in the placeholders to render this template. Meta requires every variable to be set.",
       "pickTemplate": "Pick an approved WhatsApp template to send to this contact.",
+      "searchPlaceholder": "Search by template name or title...",
+      "noSearchResults": "No templates match your search.",
       "noApprovedTemplates": "No approved templates",
       "noApprovedTemplatesHint": "Approve a template in Meta WhatsApp Manager, then sync it from Settings → Templates.",
       "preview": "Preview",

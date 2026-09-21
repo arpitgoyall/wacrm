@@ -248,6 +248,9 @@ export async function engineSendMedia(
     sender_type: 'bot',
     content_type: args.kind,
     content_text: args.caption ?? null,
+    // Meta receives this URL above; persist the same value so the inbox can
+    // render the outbound attachment instead of treating it as unavailable.
+    media_url: args.link,
     message_id: waMessageId,
     status: 'sent',
   })

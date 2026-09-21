@@ -275,6 +275,8 @@
       "cancelReply": "답장 취소"
     },
     "templatePicker": {
+      "searchPlaceholder": "템플릿 이름 또는 제목으로 검색...",
+      "noSearchResults": "검색과 일치하는 템플릿이 없습니다.",
       "sendTemplate": "템플릿 보내기",
       "fillPlaceholders": "이 템플릿을 렌더링하려면 자리표시자를 채워주세요. Meta는 모든 변수 값을 요구합니다.",
       "pickTemplate": "이 연락처에 보낼 승인된 WhatsApp 템플릿을 선택하세요.",
