@@ -91,6 +91,8 @@ export async function engineSendInteractive(
       ...common,
       bodyText: payload.body,
       headerText: payload.header,
+      headerType: payload.header_type,
+      headerMediaUrl: payload.header_media_url,
       footerText: payload.footer,
       buttons: payload.buttons,
     })
@@ -100,6 +102,8 @@ export async function engineSendInteractive(
     bodyText: payload.body,
     buttonLabel: payload.button_label,
     headerText: payload.header,
+    headerType: payload.header_type,
+    headerMediaUrl: payload.header_media_url,
     footerText: payload.footer,
     sections: payload.sections,
   })

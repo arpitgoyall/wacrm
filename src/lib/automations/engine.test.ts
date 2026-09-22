@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // Shared mock state for the service-role client. Lives in a hoisted block
 // so the vi.mock factory below can close over it.
 const h = vi.hoisted(() => ({
+  engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
   state: {
     owned: null as { id: string } | null,
     ownedCustomField: null as { id: string } | null,
@@ -101,7 +102,7 @@ vi.mock("./admin-client", () => {
 vi.mock("./meta-send", () => ({
   engineSendText: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
   engineSendTemplate: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
-  engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
+  engineSendInteractive: h.engineSendInteractive,
 }));
 
 import {
@@ -123,6 +124,58 @@ beforeEach(() => {
   h.state.upsertCalls = [];
   h.state.logInserts = [];
   h.state.logUpdates = [];
+  h.engineSendInteractive.mockClear();
+});
+
+describe("conversation_assigned message personalization", () => {
+  it("interpolates customer and counselor names in an image + buttons payload", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [{
+      id: "a1",
+      account_id: ACCOUNT,
+      user_id: "u1",
+      name: "assignment welcome",
+      trigger_type: "conversation_assigned",
+      trigger_config: {},
+      is_active: true,
+    }];
+    h.state.steps = [{
+      id: "s1",
+      automation_id: "a1",
+      position: 0,
+      step_type: "send_buttons",
+      step_config: {
+        kind: "buttons",
+        body: "Great news, {{customer_name}}! Meet {{counselor_name}}.",
+        header_type: "image",
+        header_media_url: "https://cdn.example/counselor.jpg",
+        buttons: [{ id: "talk", title: "Talk to {{counselor_name}}" }],
+      },
+    }];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "conversation_assigned",
+      contactId: "c1",
+      context: {
+        conversation_id: "conv-1",
+        agent_id: "agent-1",
+        customer_name: "Aarav",
+        counselor_name: "Riya",
+      },
+    });
+
+    expect(h.engineSendInteractive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          body: "Great news, Aarav! Meet Riya.",
+          header_type: "image",
+          header_media_url: "https://cdn.example/counselor.jpg",
+          buttons: [{ id: "talk", title: "Talk to Riya" }],
+        }),
+      }),
+    );
+  });
 });
 
 describe("runAutomationsForTrigger — tenant isolation", () => {

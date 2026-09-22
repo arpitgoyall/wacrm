@@ -50,6 +50,9 @@ export interface AutomationContext {
   tag_id?: string
   /** Agent the conversation was assigned to, for conversation_assigned. */
   agent_id?: string
+  /** Display names available to assignment messages. */
+  customer_name?: string
+  counselor_name?: string
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
   /**
@@ -461,7 +464,10 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
 
     case 'send_buttons':
     case 'send_list': {
-      const payload = step.step_config as SendButtonsStepConfig | SendListStepConfig
+      const payload = interpolateInteractivePayload(
+        step.step_config as SendButtonsStepConfig | SendListStepConfig,
+        args,
+      )
       if (!args.contactId) throw new Error(`${step.step_type} needs a contact`)
       // Validate against Meta's limits before the network call so a bad
       // payload surfaces as a clear failed-step detail rather than a raw
@@ -1162,6 +1168,8 @@ function waitMs(cfg: WaitStepConfig): number {
 
 function interpolate(s: string, args: ExecuteArgs): string {
   return s.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key) => {
+    if (key === 'customer_name') return args.context.customer_name ?? ''
+    if (key === 'counselor_name') return args.context.counselor_name ?? ''
     const [ns, prop] = String(key).split('.')
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
@@ -1175,6 +1183,42 @@ function interpolate(s: string, args: ExecuteArgs): string {
     }
     return ''
   })
+}
+
+function interpolateInteractivePayload(
+  payload: SendButtonsStepConfig | SendListStepConfig,
+  args: ExecuteArgs,
+): SendButtonsStepConfig | SendListStepConfig {
+  const common = {
+    ...payload,
+    body: interpolate(payload.body, args),
+    header: payload.header ? interpolate(payload.header, args) : undefined,
+    footer: payload.footer ? interpolate(payload.footer, args) : undefined,
+  }
+  if (payload.kind === 'buttons') {
+    return {
+      ...common,
+      kind: 'buttons',
+      buttons: payload.buttons.map((button) => ({
+        ...button,
+        title: interpolate(button.title, args),
+      })),
+    }
+  }
+  return {
+    ...common,
+    kind: 'list',
+    button_label: interpolate(payload.button_label, args),
+    sections: payload.sections.map((section) => ({
+      ...section,
+      title: section.title ? interpolate(section.title, args) : undefined,
+      rows: section.rows.map((row) => ({
+        ...row,
+        title: interpolate(row.title, args),
+        description: row.description ? interpolate(row.description, args) : undefined,
+      })),
+    })),
+  }
 }
 
 async function appendResults(

@@ -949,15 +949,16 @@ export function MessageThread({
     async (agentId: string | null) => {
       if (!conversation) return;
 
-      const supabase = createClient();
-      const { error } = await supabase
-        .from('conversations')
-        .update({ assigned_agent_id: agentId })
-        .eq('id', conversation.id);
+      const response = await fetch(`/api/conversations/${conversation.id}/assignment`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ agent_id: agentId }),
+      });
 
-      if (error) {
-        console.error('Failed to update assignment:', error);
-        toast.error('Failed to update assignment');
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        console.error('Failed to update assignment:', payload);
+        toast.error(payload?.error || 'Failed to update assignment');
         return;
       }
 
