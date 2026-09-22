@@ -11,7 +11,6 @@ import {
 import { cn } from "@/lib/utils";
 import type {
   Conversation,
-  ConversationStatus,
   Pipeline,
   PipelineStage,
   Tag,
@@ -45,8 +44,6 @@ interface ConversationListProps {
   resyncToken?: number;
 }
 
-type InboxFilter = ConversationStatus | "all" | "unread";
-
 interface DealStageLabel {
   name: string;
   color: string;
@@ -69,17 +66,8 @@ export function ConversationList({
   const t = useTranslations("Inbox.conversationList");
   const { isOwner, isAdmin, account } = useAuth();
   const canViewAssignment = isOwner || isAdmin;
-  
-  const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = useMemo(() => [
-    { label: t("filterAll"), value: "all" },
-    { label: t("filterUnread"), value: "unread" },
-    { label: t("filterOpen"), value: "open" },
-    { label: t("filterPending"), value: "pending" },
-    { label: t("filterClosed"), value: "closed" },
-  ], [t]);
 
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<InboxFilter>("all");
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
   const [selectedStageId, setSelectedStageId] = useState<string>("all");
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -340,13 +328,10 @@ export function ConversationList({
   const filtered = useMemo(() => {
     let result = conversations;
 
-    if (filter === "unread") {
-      result = result.filter((c) => c.unread_count > 0);
-    } else if (filter !== "all") {
-      result = result.filter((c) => c.status === filter);
-    }
-
-    if (isOwner && selectedPipelineId) {
+    // "All" stages means no deal-stage restriction at all, so contacts
+    // without a deal remain visible. A deal is required only when the user
+    // selects one specific stage.
+    if (isOwner && selectedPipelineId && selectedStageId !== "all") {
       result = result.filter((conversation) => {
         const contactId = conversation.contact?.id;
         const pipelineStage = contactId
@@ -357,7 +342,7 @@ export function ConversationList({
         return (
           !!contactId &&
           !!pipelineStage &&
-          (selectedStageId === "all" || pipelineStage.id === selectedStageId)
+          pipelineStage.id === selectedStageId
         );
       });
     }
@@ -385,7 +370,6 @@ export function ConversationList({
     return result;
   }, [
     conversations,
-    filter,
     search,
     selectedTagIds,
     selectedCompany,
@@ -422,7 +406,6 @@ export function ConversationList({
     [onSelect]
   );
 
-  const activeFilter = FILTER_OPTIONS.find((o) => o.value === filter);
   const activePipeline = pipelines.find(
     (pipeline) => pipeline.id === selectedPipelineId,
   );
@@ -489,32 +472,6 @@ export function ConversationList({
         </div>
 
         <div className="flex flex-wrap items-center gap-1">
-          <DropdownMenu>
-            <DropdownMenuTrigger className="inline-flex items-center justify-center h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground rounded-md hover:bg-muted">
-                {activeFilter?.label ?? t("filterAll")}
-                <ChevronDown className="h-3 w-3" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="border-border bg-popover"
-            >
-              {FILTER_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onClick={() => setFilter(opt.value)}
-                  className={cn(
-                    "text-sm",
-                    filter === opt.value
-                      ? "text-primary"
-                      : "text-popover-foreground"
-                  )}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           {tags.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger
