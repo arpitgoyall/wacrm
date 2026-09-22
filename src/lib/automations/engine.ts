@@ -56,6 +56,20 @@ export interface AutomationContext {
   counselor_name?: string
   /** Public image URL stored on the assigned member's profile. */
   counselor_profile_card_url?: string
+  /**
+   * Internal hand-off used by the assign-conversation step. The event is
+   * dispatched only after the current automation has finished, so later
+   * steps (for example assigning a deal to the conversation owner) are
+   * visible to conversation_assigned automations.
+   */
+  _pending_conversation_assignment?: {
+    conversation_id: string
+    agent_id: string
+    customer_name: string
+    counselor_name: string
+    counselor_profile_card_url: string
+    depth: number
+  }
   contact?: {
     name?: string | null
     phone?: string | null
@@ -255,16 +269,22 @@ export async function resumePendingExecution(pending: {
   }
 
   try {
+    const context = pending.context ?? {}
     await executeStepsFrom({
       automation: automation as Automation,
       contactId: pending.contact_id,
-      context: pending.context ?? {},
+      context,
       parentStepId: pending.parent_step_id,
       branch: pending.branch,
       startPosition: pending.next_step_position,
       logId: pending.log_id,
       triggerEvent: 'resumed_wait',
     })
+    await dispatchPendingConversationAssignment(
+      automation as Automation,
+      pending.contact_id,
+      context,
+    )
     await markPending(pending.id, 'done')
   } catch (err) {
     console.error('[automations] resume failed:', err)
@@ -278,6 +298,7 @@ export async function resumePendingExecution(pending: {
 
 async function executeAutomation(automation: Automation, input: DispatchInput) {
   const db = supabaseAdmin()
+  const context = input.context ?? {}
 
   const { data: log, error: logErr } = await db
     .from('automation_logs')
@@ -313,7 +334,7 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
   await executeStepsFrom({
     automation,
     contactId: input.contactId ?? null,
-    context: input.context ?? {},
+    context,
     parentStepId: null,
     branch: null,
     startPosition: 0,
@@ -331,6 +352,46 @@ async function executeAutomation(automation: Automation, input: DispatchInput) {
   if (rpcErr) {
     console.error('[automations] increment counter failed:', rpcErr)
   }
+
+  await dispatchPendingConversationAssignment(
+    automation,
+    input.contactId ?? null,
+    context,
+  )
+}
+
+async function dispatchPendingConversationAssignment(
+  automation: Automation,
+  contactId: string | null,
+  context: AutomationContext,
+): Promise<void> {
+  const pending = context._pending_conversation_assignment
+  if (!pending || !contactId) return
+
+  // Clear before dispatching. Besides keeping this implementation detail out
+  // of the child context, this makes the hand-off one-shot if execution is
+  // resumed or this context object is reused by a caller.
+  delete context._pending_conversation_assignment
+
+  await runAutomationsForTrigger({
+    accountId: automation.account_id,
+    triggerType: 'conversation_assigned',
+    contactId,
+    context: {
+      ...context,
+      conversation_id: pending.conversation_id,
+      agent_id: pending.agent_id,
+      customer_name: pending.customer_name,
+      counselor_name: pending.counselor_name,
+      counselor_profile_card_url: pending.counselor_profile_card_url,
+      vars: {
+        ...context.vars,
+        customer_name: pending.customer_name,
+        counselor_name: pending.counselor_name,
+        _conversation_assignment_depth: pending.depth,
+      },
+    },
+  })
 }
 
 interface ExecuteArgs {
@@ -382,6 +443,11 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
     if (step.step_type === 'wait') {
       const cfg = step.step_config as WaitStepConfig
       const ms = waitMs(cfg)
+      // The queued assignment event is drained by the current execution
+      // segment. Do not persist it into the resume payload or it would fire a
+      // second time when the wait completes.
+      const resumeContext = { ...args.context }
+      delete resumeContext._pending_conversation_assignment
       await db.from('automation_pending_executions').insert({
         automation_id: args.automation.id,
         // Tenancy: account_id required NOT NULL post-017.
@@ -392,7 +458,7 @@ async function executeStepsFrom(args: ExecuteArgs): Promise<void> {
         parent_step_id: args.parentStepId,
         branch: args.branch,
         next_step_position: step.position + 1,
-        context: args.context,
+        context: resumeContext,
         run_at: new Date(Date.now() + ms).toISOString(),
         status: 'pending',
       })
@@ -615,11 +681,41 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
       if (!args.contactId) throw new Error('assign_conversation needs a contact')
       const agentId = await resolveAssignmentAgent(args, cfg)
       if (!agentId) return 'no agent resolved'
-      await db
+      const conversationId = await resolveConversationId(args)
+      const { data: current } = await db
+        .from('conversations')
+        .select('assigned_agent_id')
+        .eq('id', conversationId)
+        .eq('account_id', args.automation.account_id)
+        .maybeSingle()
+      const { error: assignmentError } = await db
         .from('conversations')
         .update({ assigned_agent_id: agentId })
+        .eq('id', conversationId)
         .eq('account_id', args.automation.account_id)
-        .eq('contact_id', args.contactId)
+      if (assignmentError) throw new Error(`assign_conversation: ${assignmentError.message}`)
+
+      // Match manual inbox assignment when ownership actually changes. Queue
+      // the event rather than dispatching it here: the remaining steps in the
+      // current automation must finish first (notably Assign Deal using the
+      // newly selected conversation owner).
+      const assignmentDepth = Number(args.context.vars?._conversation_assignment_depth ?? 0)
+      if (current?.assigned_agent_id !== agentId && assignmentDepth < 1) {
+        const { data: counselor } = await db
+          .from('profiles')
+          .select('full_name, profile_card')
+          .eq('account_id', args.automation.account_id)
+          .eq('user_id', agentId)
+          .maybeSingle()
+        args.context._pending_conversation_assignment = {
+          conversation_id: conversationId,
+          agent_id: agentId,
+          customer_name: args.context.contact?.name ?? args.context.customer_name ?? '',
+          counselor_name: counselor?.full_name ?? '',
+          counselor_profile_card_url: counselor?.profile_card ?? '',
+          depth: assignmentDepth + 1,
+        }
+      }
       return `assigned to ${agentId}`
     }
 
