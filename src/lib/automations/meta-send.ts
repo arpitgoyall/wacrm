@@ -3,6 +3,7 @@ import type { InteractiveMessagePayload } from '@/lib/whatsapp/interactive'
 import {
   engineSendInteractiveButtons,
   engineSendInteractiveList,
+  engineSendMedia as flowEngineSendMedia,
 } from '@/lib/flows/meta-send'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
@@ -60,6 +61,25 @@ export async function engineSendTemplate(
   args: SendTemplateArgs,
 ): Promise<{ whatsapp_message_id: string }> {
   return sendViaMeta({ ...args, kind: 'template' })
+}
+
+export async function engineSendMedia(args: {
+  accountId: string
+  userId: string
+  conversationId: string
+  contactId: string
+  mediaUrl: string
+  caption?: string
+}): Promise<{ whatsapp_message_id: string }> {
+  return flowEngineSendMedia({
+    accountId: args.accountId,
+    userId: args.userId,
+    conversationId: args.conversationId,
+    contactId: args.contactId,
+    kind: 'image',
+    link: args.mediaUrl,
+    caption: args.caption,
+  })
 }
 
 interface SendInteractiveArgs {

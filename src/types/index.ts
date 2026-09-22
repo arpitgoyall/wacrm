@@ -540,6 +540,7 @@ export type AutomationTriggerType =
 
 export type AutomationStepType =
   | 'send_message'
+  | 'send_media'
   | 'send_buttons'
   | 'send_list'
   | 'send_template'
@@ -607,6 +608,13 @@ export type AutomationTriggerConfig =
 
 export interface SendMessageStepConfig {
   text: string;
+}
+
+export interface SendMediaStepConfig {
+  media_type: 'image';
+  media_url: string;
+  /** Optional image caption. Supports automation variables. */
+  caption?: string;
 }
 
 /**
@@ -699,6 +707,7 @@ export interface SendWebhookStepConfig {
  */
 export type AutomationStepConfig =
   | SendMessageStepConfig
+  | SendMediaStepConfig
   | SendButtonsStepConfig
   | SendListStepConfig
   | SendTemplateStepConfig

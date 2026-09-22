@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // so the vi.mock factory below can close over it.
 const h = vi.hoisted(() => ({
   engineSendInteractive: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
+  engineSendMedia: vi.fn(async () => ({ whatsapp_message_id: "m-media" })),
   state: {
     owned: null as { id: string } | null,
     ownedCustomField: null as { id: string } | null,
@@ -103,6 +104,7 @@ vi.mock("./meta-send", () => ({
   engineSendText: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
   engineSendTemplate: vi.fn(async () => ({ whatsapp_message_id: "m1" })),
   engineSendInteractive: h.engineSendInteractive,
+  engineSendMedia: h.engineSendMedia,
 }));
 
 import {
@@ -125,6 +127,41 @@ beforeEach(() => {
   h.state.logInserts = [];
   h.state.logUpdates = [];
   h.engineSendInteractive.mockClear();
+  h.engineSendMedia.mockClear();
+});
+
+describe("send_media", () => {
+  it("sends an image and interpolates assignment names in its caption", async () => {
+    h.state.owned = { id: "c1" };
+    h.state.automations = [{
+      id: "a1", account_id: ACCOUNT, user_id: "u1", name: "assignment image",
+      trigger_type: "conversation_assigned", trigger_config: {}, is_active: true,
+    }];
+    h.state.steps = [{
+      id: "s1", automation_id: "a1", position: 0, step_type: "send_media",
+      step_config: {
+        media_type: "image",
+        media_url: "https://cdn.example/welcome.jpg",
+        caption: "Hi {{customer_name}}, your counselor is {{counselor_name}}.",
+      },
+    }];
+
+    await runAutomationsForTrigger({
+      accountId: ACCOUNT,
+      triggerType: "conversation_assigned",
+      contactId: "c1",
+      context: {
+        conversation_id: "conv-1",
+        customer_name: "Aarav",
+        counselor_name: "Riya",
+      },
+    });
+
+    expect(h.engineSendMedia).toHaveBeenCalledWith(expect.objectContaining({
+      mediaUrl: "https://cdn.example/welcome.jpg",
+      caption: "Hi Aarav, your counselor is Riya.",
+    }));
+  });
 });
 
 describe("conversation_assigned message personalization", () => {

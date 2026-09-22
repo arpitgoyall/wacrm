@@ -8,6 +8,7 @@ import type {
   InteractiveReplyTriggerConfig,
   TagTriggerConfig,
   SendMessageStepConfig,
+  SendMediaStepConfig,
   SendButtonsStepConfig,
   SendListStepConfig,
   SendTemplateStepConfig,
@@ -23,7 +24,7 @@ import type {
 import { supabaseAdmin } from './admin-client'
 import { addContactTagIfAbsent } from '@/lib/contacts/tag-write'
 import { MAX_TAG_CHAIN_DEPTH, getTagChainDepth } from '@/lib/contacts/tag-chain'
-import { engineSendText, engineSendTemplate, engineSendInteractive } from './meta-send'
+import { engineSendText, engineSendTemplate, engineSendInteractive, engineSendMedia } from './meta-send'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { sendCtwaConversion } from './ctwa-capi'
@@ -460,6 +461,25 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         text,
       })
       return `sent via Meta (${whatsapp_message_id})`
+    }
+
+    case 'send_media': {
+      const cfg = step.step_config as SendMediaStepConfig
+      if (!args.contactId) throw new Error('send_media needs a contact')
+      if (cfg.media_type !== 'image' || !cfg.media_url) {
+        throw new Error('send_media needs an image')
+      }
+      const conversationId = await resolveConversationId(args)
+      const caption = cfg.caption ? interpolate(cfg.caption, args) : undefined
+      const { whatsapp_message_id } = await engineSendMedia({
+        accountId: args.automation.account_id,
+        userId: args.automation.user_id,
+        conversationId,
+        contactId: args.contactId,
+        mediaUrl: cfg.media_url,
+        caption,
+      })
+      return `image sent via Meta (${whatsapp_message_id})`
     }
 
     case 'send_buttons':

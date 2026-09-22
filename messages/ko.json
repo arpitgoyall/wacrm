@@ -920,6 +920,7 @@
     "builder": {
       "steps": {
         "send_message": "메시지 보내기",
+        "send_media": "이미지 보내기",
         "send_buttons": "버튼 보내기",
         "send_list": "목록 보내기",
         "send_template": "템플릿 보내기",
@@ -1038,6 +1039,14 @@
       "config": {
         "messageText": "메시지 텍스트",
         "placeholderMessageText": "안녕하세요! 문의해주셔서 감사합니다…",
+        "imageLabel": "이미지",
+        "uploadImage": "이미지 업로드",
+        "imageUrlPlaceholder": "https://… (또는 이미지 업로드)",
+        "captionLabel": "캡션 (선택 사항)",
+        "captionPlaceholder": "이미지와 함께 표시할 메시지",
+        "imageTypeError": "PNG, JPEG 또는 WebP 이미지를 사용하세요.",
+        "imageSizeError": "이미지는 5MB 이하여야 합니다.",
+        "imageUploadFailed": "이미지 업로드에 실패했습니다.",
         "tagLabel": "태그",
         "modeLabel": "모드",
         "modes": {

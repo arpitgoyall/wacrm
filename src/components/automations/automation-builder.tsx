@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -33,6 +34,8 @@ import {
   ArrowUp,
   MousePointerClick,
   List,
+  Image as ImageIcon,
+  Upload,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -40,6 +43,8 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
+import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
+import { CHAT_MEDIA_ACCEPT } from "@/lib/storage/media-accept"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -109,6 +114,7 @@ interface StepMeta {
 
 const STEP_META: Record<AutomationStepType, StepMeta> = {
   send_message: { label: "send_message", icon: MessageSquare, border: "border-l-primary" },
+  send_media: { label: "send_media", icon: ImageIcon, border: "border-l-primary" },
   send_buttons: { label: "send_buttons", icon: MousePointerClick, border: "border-l-primary" },
   send_list: { label: "send_list", icon: List, border: "border-l-primary" },
   send_template: { label: "send_template", icon: FileText, border: "border-l-primary" },
@@ -126,6 +132,7 @@ const STEP_META: Record<AutomationStepType, StepMeta> = {
 
 const ADDABLE_STEPS: AutomationStepType[] = [
   "send_message",
+  "send_media",
   "send_buttons",
   "send_list",
   "send_template",
@@ -178,6 +185,8 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
   switch (type) {
     case "send_message":
       return { text: "" }
+    case "send_media":
+      return { media_type: "image", media_url: "", caption: "" }
     case "send_buttons":
       return toStepConfig(blankButtonsPayload())
     case "send_list":
@@ -1359,6 +1368,85 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
 // Per-step config editor
 // ------------------------------------------------------------
 
+function SendMediaFields({
+  mediaUrl,
+  caption,
+  onChange,
+  t,
+}: {
+  mediaUrl: string
+  caption: string
+  onChange: (patch: { media_url?: string; caption?: string }) => void
+  t: ReturnType<typeof useTranslations>
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [uploading, setUploading] = useState(false)
+
+  async function upload(file: File) {
+    if (!CHAT_MEDIA_ACCEPT.image.split(",").includes(file.type)) {
+      toast.error(t("config.imageTypeError"))
+      return
+    }
+    if (file.size > MEDIA_MAX_BYTES_BY_KIND.image) {
+      toast.error(t("config.imageSizeError"))
+      return
+    }
+    setUploading(true)
+    try {
+      const { publicUrl } = await uploadAccountMedia("chat-media", file)
+      onChange({ media_url: publicUrl })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t("config.imageUploadFailed"))
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <FieldBlock label={t("config.imageLabel")}>
+        <input
+          ref={fileRef}
+          type="file"
+          accept={CHAT_MEDIA_ACCEPT.image}
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) void upload(file)
+            event.target.value = ""
+          }}
+        />
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={uploading}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {t("config.uploadImage")}
+          </Button>
+          <Input
+            value={mediaUrl}
+            onChange={(event) => onChange({ media_url: event.target.value })}
+            placeholder={t("config.imageUrlPlaceholder")}
+            className="min-w-0 flex-1 bg-muted text-foreground"
+          />
+        </div>
+      </FieldBlock>
+      <FieldBlock label={t("config.captionLabel")}>
+        <Textarea
+          value={caption}
+          maxLength={1024}
+          onChange={(event) => onChange({ caption: event.target.value })}
+          placeholder={t("config.captionPlaceholder")}
+          className="min-h-24 bg-muted text-foreground"
+        />
+      </FieldBlock>
+    </div>
+  )
+}
+
 function StepEditor({
   step,
   onChange,
@@ -1382,6 +1470,15 @@ function StepEditor({
             className="min-h-24 bg-muted text-foreground"
           />
         </FieldBlock>
+      )
+    case "send_media":
+      return (
+        <SendMediaFields
+          mediaUrl={(cfg.media_url as string) ?? ""}
+          caption={(cfg.caption as string) ?? ""}
+          onChange={(patch) => set(patch)}
+          t={t}
+        />
       )
     case "send_buttons":
     case "send_list":
@@ -1670,6 +1767,8 @@ function previewFor(step: BuilderStep): string {
   switch (step.step_type) {
     case "send_message":
       return (step.step_config.text as string) || "no text yet"
+    case "send_media":
+      return (step.step_config.caption as string) || (step.step_config.media_url ? "image" : "no image yet")
     case "send_buttons":
     case "send_list":
       return interactivePayloadPreviewText(asInteractive(step.step_config)) || "no body yet"

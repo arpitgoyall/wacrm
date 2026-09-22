@@ -5,6 +5,20 @@ import {
 } from "./validate";
 
 describe("validateStepsForActivation", () => {
+  it("accepts an image send with an optional caption", () => {
+    expect(validateStepsForActivation([{
+      step_type: "send_media",
+      step_config: { media_type: "image", media_url: "https://cdn.example/welcome.jpg" },
+    }])).toEqual([]);
+  });
+
+  it("requires an image URL for send_media", () => {
+    expect(validateStepsForActivation([{
+      step_type: "send_media",
+      step_config: { media_type: "image", media_url: "" },
+    }])).toContainEqual(expect.objectContaining({ path: "steps[0].media_url" }));
+  });
+
   it("rejects empty or missing step lists", () => {
     expect(validateStepsForActivation([])).toEqual([
       { path: "steps", message: "active automations need at least one step" },

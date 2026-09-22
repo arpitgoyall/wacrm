@@ -920,6 +920,7 @@
     "builder": {
       "steps": {
         "send_message": "Send Message",
+        "send_media": "Send Image",
         "send_buttons": "Send Buttons",
         "send_list": "Send List",
         "send_template": "Send Template",
@@ -1038,6 +1039,14 @@
       "config": {
         "messageText": "Message text",
         "placeholderMessageText": "Hi! Thanks for reaching out…",
+        "imageLabel": "Image",
+        "uploadImage": "Upload image",
+        "imageUrlPlaceholder": "https://… (or upload an image)",
+        "captionLabel": "Caption (optional)",
+        "captionPlaceholder": "Message shown with the image. Assignment variables are supported.",
+        "imageTypeError": "Use a PNG, JPEG, or WebP image.",
+        "imageSizeError": "Image must be 5 MB or smaller.",
+        "imageUploadFailed": "Image upload failed.",
         "tagLabel": "Tag",
         "modeLabel": "Mode",
         "modes": {
