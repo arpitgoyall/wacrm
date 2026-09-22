@@ -18,8 +18,7 @@
  * (introduced in this PR) mount the exact same form components.
  */
 
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { VariableTextarea } from "@/components/variables/variable-textarea";
 import {
   Select,
   SelectContent,
@@ -45,20 +44,12 @@ export function TextRow({
   return (
     <div>
       <label className="mb-1 block text-xs text-muted-foreground">{label}</label>
-      {rows > 1 ? (
-        <Textarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={rows}
-          className="bg-muted"
-        />
-      ) : (
-        <Input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="bg-muted"
-        />
-      )}
+      <VariableTextarea
+        value={value}
+        onChange={onChange}
+        rows={rows}
+        className={cn("bg-muted", rows === 1 && "min-h-9 resize-none py-2")}
+      />
     </div>
   );
 }

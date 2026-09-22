@@ -16,6 +16,7 @@ export interface Profile {
   full_name: string;
   email: string;
   avatar_url?: string;
+  profile_card?: string;
   /**
    * Legacy free-form role column from migration 001. Never read
    * by the app since 017_account_sharing.sql introduced the typed
@@ -612,6 +613,8 @@ export interface SendMessageStepConfig {
 
 export interface SendMediaStepConfig {
   media_type: 'image';
+  /** Fixed upload, or the assigned team member's profile card. */
+  media_source?: 'fixed' | 'assigned_agent_profile_card';
   media_url: string;
   /** Optional image caption. Supports automation variables. */
   caption?: string;

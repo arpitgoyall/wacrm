@@ -35,10 +35,11 @@ export async function PATCH(
   }
 
   let counselorName = ''
+  let counselorProfileCardUrl = ''
   if (agentId) {
     const { data: counselor, error: counselorError } = await ctx.supabase
       .from('profiles')
-      .select('full_name')
+      .select('full_name, profile_card')
       .eq('account_id', ctx.accountId)
       .eq('user_id', agentId)
       .maybeSingle()
@@ -49,6 +50,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Counselor is not a member of this account' }, { status: 400 })
     }
     counselorName = counselor.full_name ?? ''
+    counselorProfileCardUrl = counselor.profile_card ?? ''
   }
 
   const { error: updateError } = await ctx.supabase
@@ -63,7 +65,7 @@ export async function PATCH(
   if (agentId && agentId !== conversation.assigned_agent_id) {
     const { data: contact } = await ctx.supabase
       .from('contacts')
-      .select('name')
+      .select('name, phone, email, company')
       .eq('id', conversation.contact_id)
       .eq('account_id', ctx.accountId)
       .maybeSingle()
@@ -77,6 +79,8 @@ export async function PATCH(
         agent_id: agentId,
         customer_name: contact?.name ?? '',
         counselor_name: counselorName,
+        counselor_profile_card_url: counselorProfileCardUrl,
+        contact: contact ?? undefined,
         vars: {
           customer_name: contact?.name ?? '',
           counselor_name: counselorName,

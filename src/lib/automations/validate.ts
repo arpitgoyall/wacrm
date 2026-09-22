@@ -63,7 +63,7 @@ function validateOne(step: StepLike, path: string, issues: ValidationIssue[]): v
       if (c.media_type !== 'image') {
         issues.push({ path: `${path}.media_type`, message: 'media type must be image' })
       }
-      if (!nonEmpty(c.media_url)) {
+      if (c.media_source !== 'assigned_agent_profile_card' && !nonEmpty(c.media_url)) {
         issues.push({ path: `${path}.media_url`, message: 'image is required' })
       }
       break

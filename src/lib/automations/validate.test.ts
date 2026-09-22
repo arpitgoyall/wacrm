@@ -19,6 +19,17 @@ describe("validateStepsForActivation", () => {
     }])).toContainEqual(expect.objectContaining({ path: "steps[0].media_url" }));
   });
 
+  it("allows send_media to resolve the assigned member profile card at runtime", () => {
+    expect(validateStepsForActivation([{
+      step_type: "send_media",
+      step_config: {
+        media_type: "image",
+        media_source: "assigned_agent_profile_card",
+        media_url: "",
+      },
+    }])).toEqual([]);
+  });
+
   it("rejects empty or missing step lists", () => {
     expect(validateStepsForActivation([])).toEqual([
       { path: "steps", message: "active automations need at least one step" },

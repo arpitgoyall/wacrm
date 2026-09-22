@@ -761,10 +761,30 @@ async function resolveConditionSubject(
  */
 function interpolateVars(template: string, vars: Record<string, unknown>): string {
   if (!template) return "";
-  return template.replace(/\{\{vars\.([a-zA-Z0-9_]+)\}\}/g, (_, key) => {
-    const v = vars[key];
+  return template.replace(/\{\{(vars|contact)\.([a-zA-Z0-9_]+)\}\}/g, (_, ns, key) => {
+    const v = vars[ns === "contact" ? `contact.${key}` : key];
     return v === undefined || v === null ? "" : String(v);
   });
+}
+
+async function contactInterpolationVars(
+  db: AdminClient,
+  accountId: string,
+  contactId: string,
+): Promise<Record<string, unknown>> {
+  const { data } = await db
+    .from("contacts")
+    .select("name, phone, email, company")
+    .eq("account_id", accountId)
+    .eq("id", contactId)
+    .maybeSingle();
+  if (!data) return {};
+  return Object.fromEntries(
+    ["name", "phone", "email", "company"].map((key) => [
+      `contact.${key}`,
+      (data as Record<string, unknown>)[key] ?? "",
+    ]),
+  );
 }
 
 async function endRun(
@@ -1350,7 +1370,10 @@ async function startNewRun(
   // arrived organically; then we omit `vars` from the INSERT entirely
   // so the column keeps its `'{}'::jsonb` default (behaviour unchanged
   // for every non-ad run).
-  const seededVars = ctwaReferralVars(input.referral);
+  const seededVars = {
+    ...ctwaReferralVars(input.referral),
+    ...(await contactInterpolationVars(db, flow.account_id, input.contactId)),
+  };
   const hasSeededVars = Object.keys(seededVars).length > 0;
 
   // INSERT — partial unique index `idx_one_active_run_per_contact`
@@ -1455,6 +1478,7 @@ export async function startManualFlowRun(
     conversationId: string;
   },
 ): Promise<DispatchInboundResult> {
+  const seededVars = await contactInterpolationVars(db, opts.accountId, opts.contactId);
   const { data: inserted, error: insErr } = await db
     .from("flow_runs")
     .insert({
@@ -1467,6 +1491,7 @@ export async function startManualFlowRun(
       conversation_id: opts.conversationId,
       status: "active",
       current_node_key: flow.entry_node_id,
+      vars: seededVars,
     })
     .select("*")
     .maybeSingle();

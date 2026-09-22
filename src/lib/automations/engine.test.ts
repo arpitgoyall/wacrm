@@ -141,7 +141,8 @@ describe("send_media", () => {
       id: "s1", automation_id: "a1", position: 0, step_type: "send_media",
       step_config: {
         media_type: "image",
-        media_url: "https://cdn.example/welcome.jpg",
+        media_source: "assigned_agent_profile_card",
+        media_url: "",
         caption: "Hi {{customer_name}}, your counselor is {{counselor_name}}.",
       },
     }];
@@ -154,11 +155,12 @@ describe("send_media", () => {
         conversation_id: "conv-1",
         customer_name: "Aarav",
         counselor_name: "Riya",
+        counselor_profile_card_url: "https://cdn.example/riya-card.jpg",
       },
     });
 
     expect(h.engineSendMedia).toHaveBeenCalledWith(expect.objectContaining({
-      mediaUrl: "https://cdn.example/welcome.jpg",
+      mediaUrl: "https://cdn.example/riya-card.jpg",
       caption: "Hi Aarav, your counselor is Riya.",
     }));
   });

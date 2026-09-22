@@ -40,7 +40,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
+import { VariableTextarea } from "@/components/variables/variable-textarea"
 import { Switch } from "@/components/ui/switch"
 import { Checkbox } from "@/components/ui/checkbox"
 import { uploadAccountMedia, MEDIA_MAX_BYTES_BY_KIND } from "@/lib/storage/upload-media"
@@ -186,7 +186,7 @@ function blankConfig(type: AutomationStepType): Record<string, unknown> {
     case "send_message":
       return { text: "" }
     case "send_media":
-      return { media_type: "image", media_url: "", caption: "" }
+      return { media_type: "image", media_source: "fixed", media_url: "", caption: "" }
     case "send_buttons":
       return toStepConfig(blankButtonsPayload())
     case "send_list":
@@ -1369,14 +1369,16 @@ function AddButton({ onPick }: { onPick: (t: AutomationStepType) => void }) {
 // ------------------------------------------------------------
 
 function SendMediaFields({
+  mediaSource,
   mediaUrl,
   caption,
   onChange,
   t,
 }: {
   mediaUrl: string
+  mediaSource: string
   caption: string
-  onChange: (patch: { media_url?: string; caption?: string }) => void
+  onChange: (patch: { media_source?: string; media_url?: string; caption?: string }) => void
   t: ReturnType<typeof useTranslations>
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -1404,6 +1406,17 @@ function SendMediaFields({
 
   return (
     <div className="space-y-4">
+      <FieldBlock label={t("config.imageSourceLabel")}>
+        <select
+          value={mediaSource}
+          onChange={(event) => onChange({ media_source: event.target.value })}
+          className={SELECT_CLASS}
+        >
+          <option value="fixed">{t("config.imageSourceFixed")}</option>
+          <option value="assigned_agent_profile_card">{t("config.imageSourceProfileCard")}</option>
+        </select>
+      </FieldBlock>
+      {mediaSource === "fixed" && (
       <FieldBlock label={t("config.imageLabel")}>
         <input
           ref={fileRef}
@@ -1434,11 +1447,12 @@ function SendMediaFields({
           />
         </div>
       </FieldBlock>
+      )}
       <FieldBlock label={t("config.captionLabel")}>
-        <Textarea
+        <VariableTextarea
           value={caption}
           maxLength={1024}
-          onChange={(event) => onChange({ caption: event.target.value })}
+          onChange={(value) => onChange({ caption: value })}
           placeholder={t("config.captionPlaceholder")}
           className="min-h-24 bg-muted text-foreground"
         />
@@ -1463,9 +1477,9 @@ function StepEditor({
     case "send_message":
       return (
         <FieldBlock label={t("config.messageText")}>
-          <Textarea
+          <VariableTextarea
             value={(cfg.text as string) ?? ""}
-            onChange={(e) => set({ text: e.target.value })}
+            onChange={(value) => set({ text: value })}
             placeholder={t("config.placeholderMessageText")}
             className="min-h-24 bg-muted text-foreground"
           />
@@ -1474,6 +1488,7 @@ function StepEditor({
     case "send_media":
       return (
         <SendMediaFields
+          mediaSource={(cfg.media_source as string) ?? "fixed"}
           mediaUrl={(cfg.media_url as string) ?? ""}
           caption={(cfg.caption as string) ?? ""}
           onChange={(patch) => set(patch)}
@@ -1729,9 +1744,9 @@ function StepEditor({
             />
           </FieldBlock>
           <FieldBlock label={t("config.bodyTemplateLabel")}>
-            <Textarea
+            <VariableTextarea
               value={(cfg.body_template as string) ?? ""}
-              onChange={(e) => set({ body_template: e.target.value })}
+              onChange={(value) => set({ body_template: value })}
               className="min-h-20 bg-muted font-mono text-xs text-foreground"
             />
           </FieldBlock>

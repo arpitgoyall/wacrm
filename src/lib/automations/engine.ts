@@ -54,6 +54,14 @@ export interface AutomationContext {
   /** Display names available to assignment messages. */
   customer_name?: string
   counselor_name?: string
+  /** Public image URL stored on the assigned member's profile. */
+  counselor_profile_card_url?: string
+  contact?: {
+    name?: string | null
+    phone?: string | null
+    email?: string | null
+    company?: string | null
+  }
   /** Button / list-row id the customer tapped, for interactive_reply. */
   interactive_reply_id?: string
   /**
@@ -106,7 +114,7 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
     if (input.contactId) {
       const { data: owned, error: ownErr } = await db
         .from('contacts')
-        .select('id')
+        .select('id, name, phone, email, company')
         .eq('id', input.contactId)
         .eq('account_id', input.accountId)
         .maybeSingle()
@@ -117,6 +125,15 @@ export async function runAutomationsForTrigger(input: DispatchInput): Promise<vo
       if (!owned) {
         console.warn('[automations] contact not in account, refusing dispatch', input.contactId)
         return
+      }
+      input.context = {
+        ...input.context,
+        contact: {
+          name: owned.name,
+          phone: owned.phone,
+          email: owned.email,
+          company: owned.company,
+        },
       }
     }
 
@@ -466,7 +483,10 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
     case 'send_media': {
       const cfg = step.step_config as SendMediaStepConfig
       if (!args.contactId) throw new Error('send_media needs a contact')
-      if (cfg.media_type !== 'image' || !cfg.media_url) {
+      const mediaUrl = cfg.media_source === 'assigned_agent_profile_card'
+        ? args.context.counselor_profile_card_url
+        : cfg.media_url
+      if (cfg.media_type !== 'image' || !mediaUrl) {
         throw new Error('send_media needs an image')
       }
       const conversationId = await resolveConversationId(args)
@@ -476,7 +496,7 @@ async function runStep(step: AutomationStep, args: ExecuteArgs): Promise<string>
         userId: args.automation.user_id,
         conversationId,
         contactId: args.contactId,
-        mediaUrl: cfg.media_url,
+        mediaUrl,
         caption,
       })
       return `image sent via Meta (${whatsapp_message_id})`
@@ -1191,6 +1211,9 @@ function interpolate(s: string, args: ExecuteArgs): string {
     if (key === 'customer_name') return args.context.customer_name ?? ''
     if (key === 'counselor_name') return args.context.counselor_name ?? ''
     const [ns, prop] = String(key).split('.')
+    if (ns === 'contact' && prop) {
+      return String(args.context.contact?.[prop as keyof NonNullable<AutomationContext['contact']>] ?? '')
+    }
     if (ns === 'message' && prop === 'text') return String(args.context.message_text ?? '')
     if (ns === 'vars' && prop) return String(args.context.vars?.[prop] ?? '')
     if (ns === 'deal' && prop) {
