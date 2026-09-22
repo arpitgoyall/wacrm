@@ -92,6 +92,7 @@ export interface AccountMember {
   full_name: string;
   email: string | null;
   avatar_url: string | null;
+  profile_card: string | null;
   role: AccountRole;
   /** Sales/support tag — only ever set when `role === 'agent'`. */
   team_type: TeamType | null;

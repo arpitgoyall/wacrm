@@ -23,6 +23,7 @@ interface ProfileRow {
   full_name: string | null;
   email: string | null;
   avatar_url: string | null;
+  profile_card: string | null;
   account_role: string;
   team_type: string | null;
   created_at: string;
@@ -36,7 +37,7 @@ export async function GET() {
     // the caller's, so this query is naturally account-scoped.
     const { data, error } = await ctx.supabase
       .from("profiles")
-      .select("user_id, full_name, email, avatar_url, account_role, team_type, created_at")
+      .select("user_id, full_name, email, avatar_url, profile_card, account_role, team_type, created_at")
       .eq("account_id", ctx.accountId)
       .order("created_at", { ascending: true });
 
@@ -61,6 +62,7 @@ export async function GET() {
           full_name: row.full_name ?? "",
           email: canSeeEmails ? row.email : null,
           avatar_url: row.avatar_url,
+          profile_card: row.profile_card,
           role: row.account_role,
           // Team type only means anything for agents — don't surface a
           // stale tag left over from before a promotion/demotion.

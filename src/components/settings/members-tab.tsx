@@ -31,6 +31,7 @@ import {
   Plus,
   Trash2,
   UsersRound,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 import {
@@ -81,6 +82,7 @@ interface Member {
   full_name: string;
   email: string | null;
   avatar_url: string | null;
+  profile_card: string | null;
   role: AccountRole;
   team_type: TeamType | null;
   joined_at: string;
@@ -141,6 +143,58 @@ export function MembersTab() {
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<Member | null>(null);
+
+  function chooseProfileCard(member: Member) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (file) void uploadProfileCard(member, file);
+    };
+    input.click();
+  }
+
+  async function uploadProfileCard(member: Member, file: File) {
+    setPendingMemberAction(member.user_id);
+    try {
+      const form = new FormData();
+      form.set('file', file);
+      const res = await fetch(`/api/account/members/${member.user_id}/profile-card`, {
+        method: 'POST',
+        body: form,
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('profileCardUploadError'));
+      setMembers((current) => current.map((item) =>
+        item.user_id === member.user_id ? { ...item, profile_card: payload.profile_card } : item,
+      ));
+      toast.success(t('profileCardUpdated', { name: member.full_name || t('unnamed') }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('profileCardUploadError'));
+    } finally {
+      setPendingMemberAction(null);
+    }
+  }
+
+  async function removeProfileCard(member: Member) {
+    setPendingMemberAction(member.user_id);
+    try {
+      const res = await fetch(`/api/account/members/${member.user_id}/profile-card`, {
+        method: 'DELETE',
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || t('profileCardRemoveError'));
+      setMembers((current) => current.map((item) =>
+        item.user_id === member.user_id ? { ...item, profile_card: null } : item,
+      ));
+      toast.success(t('profileCardRemoved', { name: member.full_name || t('unnamed') }));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('profileCardRemoveError'));
+    } finally {
+      setPendingMemberAction(null);
+    }
+  }
   const [pendingMemberAction, setPendingMemberAction] = useState<string | null>(
     null,
   );
@@ -454,6 +508,41 @@ export function MembersTab() {
                       inline. Items align to the start on mobile so the
                       role dropdown lines up under the avatar. */}
                   <div className="flex items-center gap-2 sm:gap-3">
+                    {canManageMembers && (
+                      <div className="flex items-center gap-1">
+                        {member.profile_card && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={member.profile_card}
+                            alt={t('profileCardPreview', { name: member.full_name || t('unnamed') })}
+                            className="size-9 rounded border border-border object-cover"
+                          />
+                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isBusy}
+                          onClick={() => chooseProfileCard(member)}
+                          title={t('profileCardAction')}
+                        >
+                          {isBusy ? <Loader2 className="size-4 animate-spin" /> : <ImageIcon className="size-4" />}
+                          <span className="hidden lg:inline">{t('profileCardAction')}</span>
+                        </Button>
+                        {member.profile_card && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            disabled={isBusy}
+                            onClick={() => void removeProfileCard(member)}
+                            title={t('removeProfileCard')}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
                     {/* Role display / editor. Inline Select is admin+
                         only AND not allowed on the owner row (owner
                         changes go through transfer, which lands later). */}
