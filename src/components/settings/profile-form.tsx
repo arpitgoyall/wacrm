@@ -36,12 +36,16 @@ export function ProfileForm() {
   const { user, profile, refreshProfile } = useAuth();
   const supabase = createClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const profileCardInputRef = useRef<HTMLInputElement>(null);
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [removeAvatar, setRemoveAvatar] = useState(false);
+  const [pendingProfileCard, setPendingProfileCard] = useState<File | null>(null);
+  const [profileCardPreviewUrl, setProfileCardPreviewUrl] = useState<string | null>(null);
+  const [removeProfileCard, setRemoveProfileCard] = useState(false);
   const [saving, setSaving] = useState(false);
   const [emailChangePending, setEmailChangePending] = useState(false);
 
@@ -56,11 +60,14 @@ export function ProfileForm() {
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (profileCardPreviewUrl) URL.revokeObjectURL(profileCardPreviewUrl);
     };
-  }, [previewUrl]);
+  }, [previewUrl, profileCardPreviewUrl]);
 
   const currentAvatar =
     previewUrl ?? (!removeAvatar ? profile?.avatar_url ?? null : null);
+  const currentProfileCard =
+    profileCardPreviewUrl ?? (!removeProfileCard ? profile?.profile_card ?? null : null);
 
   const initial = (fullName || profile?.full_name || profile?.email || 'U')
     .charAt(0)
@@ -97,6 +104,31 @@ export function ProfileForm() {
     setRemoveAvatar(true);
   };
 
+  const onPickProfileCard = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!ALLOWED_MIME.has(file.type)) {
+      toast.error(t('unsupportedImage'), { description: t('unsupportedImageDesc') });
+      return;
+    }
+    if (file.size > MAX_AVATAR_BYTES) {
+      toast.error(t('imageTooLarge'), { description: t('imageTooLargeDesc') });
+      return;
+    }
+    if (profileCardPreviewUrl) URL.revokeObjectURL(profileCardPreviewUrl);
+    setPendingProfileCard(file);
+    setProfileCardPreviewUrl(URL.createObjectURL(file));
+    setRemoveProfileCard(false);
+  };
+
+  const onRemoveProfileCard = () => {
+    if (profileCardPreviewUrl) URL.revokeObjectURL(profileCardPreviewUrl);
+    setPendingProfileCard(null);
+    setProfileCardPreviewUrl(null);
+    setRemoveProfileCard(true);
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !profile) return;
@@ -115,6 +147,7 @@ export function ProfileForm() {
     setSaving(true);
     try {
       let nextAvatarUrl: string | null = profile.avatar_url ?? null;
+      let nextProfileCardUrl: string | null = profile.profile_card ?? null;
 
       // Upload a newly-staged image, if any.
       if (pendingAvatar) {
@@ -139,12 +172,30 @@ export function ProfileForm() {
         nextAvatarUrl = null;
       }
 
+      if (pendingProfileCard) {
+        const ext = pendingProfileCard.name.split('.').pop()?.toLowerCase() || 'png';
+        const path = `${user.id}/profile-card-${Date.now()}.${ext}`;
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(path, pendingProfileCard, {
+            cacheControl: '3600',
+            upsert: true,
+            contentType: pendingProfileCard.type,
+          });
+        if (uploadError) throw new Error(t('uploadFailed', { message: uploadError.message }));
+        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+        nextProfileCardUrl = publicUrl;
+      } else if (removeProfileCard) {
+        nextProfileCardUrl = null;
+      }
+
       // Persist name + avatar to profiles.
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
           full_name: trimmedName,
           avatar_url: nextAvatarUrl,
+          profile_card: nextProfileCardUrl,
         })
         .eq('user_id', user.id);
       if (updateError) {
@@ -176,6 +227,9 @@ export function ProfileForm() {
       setPendingAvatar(null);
       setPreviewUrl(null);
       setRemoveAvatar(false);
+      setPendingProfileCard(null);
+      setProfileCardPreviewUrl(null);
+      setRemoveProfileCard(false);
       await refreshProfile();
 
       toast.success(
@@ -196,7 +250,9 @@ export function ProfileForm() {
     (fullName.trim() !== (profile.full_name ?? '') ||
       email.trim().toLowerCase() !== (profile.email ?? '').toLowerCase() ||
       pendingAvatar !== null ||
-      removeAvatar);
+      removeAvatar ||
+      pendingProfileCard !== null ||
+      removeProfileCard);
 
   const joined = user?.created_at
     ? new Date(user.created_at).toLocaleDateString(undefined, {
@@ -259,6 +315,53 @@ export function ProfileForm() {
                 {t('photoHint')}
               </p>
             </div>
+          </div>
+
+          {/* Profile card used by conversation-assignment automations. */}
+          <div className="space-y-3 border-t border-border pt-5">
+            <div>
+              <p className="text-sm font-medium text-foreground">{t('profileCardTitle')}</p>
+              <p className="text-xs text-muted-foreground">{t('profileCardDesc')}</p>
+            </div>
+            {currentProfileCard && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={currentProfileCard}
+                alt={t('profileCardAlt')}
+                className="max-h-64 w-auto max-w-full rounded-lg border border-border object-contain"
+              />
+            )}
+            <div className="flex flex-wrap gap-2">
+              <input
+                ref={profileCardInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={onPickProfileCard}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => profileCardInputRef.current?.click()}
+                disabled={saving}
+              >
+                <Upload className="size-4" />
+                {currentProfileCard ? t('changeProfileCard') : t('uploadProfileCard')}
+              </Button>
+              {currentProfileCard && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={onRemoveProfileCard}
+                  disabled={saving}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Trash2 className="size-4" />
+                  {t('remove')}
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">{t('profileCardHint')}</p>
           </div>
 
           {/* Name */}

@@ -28,6 +28,7 @@ interface Profile {
   full_name: string | null;
   email: string;
   avatar_url: string | null;
+  profile_card: string | null;
   role: string | null;
   /**
    * Opted-in beta feature keys for this account. No current feature
@@ -171,6 +172,7 @@ interface ProfileRow {
   full_name: string | null;
   email: string;
   avatar_url: string | null;
+  profile_card: string | null;
   role: string | null;
   beta_features: string[] | null;
   account_id: string | null;
@@ -216,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const result = await supabase
           .from("profiles")
           .select(
-            "id, full_name, email, avatar_url, role, beta_features, account_id, account_role, team_type",
+            "id, full_name, email, avatar_url, profile_card, role, beta_features, account_id, account_role, team_type",
           )
           .eq("user_id", userId)
           .maybeSingle();
@@ -301,6 +303,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           full_name: data.full_name,
           email: data.email,
           avatar_url: data.avatar_url,
+          profile_card: data.profile_card,
           role: data.role,
           // `beta_features` is `NOT NULL DEFAULT ARRAY[]` in the DB, but
           // narrow defensively in case the column hasn't been migrated yet
