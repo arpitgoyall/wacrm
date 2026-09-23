@@ -3,12 +3,13 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { parseBroadcastCsv } from '@/lib/broadcast-csv';
-import { CustomField, Tag } from '@/types';
+import { CustomField, Pipeline, PipelineStage, Tag } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
   Users,
   Tags,
+  Kanban,
   Filter,
   Upload,
   FileText,
@@ -19,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-type AudienceType = 'all' | 'tags' | 'custom_field' | 'csv';
+type AudienceType = 'all' | 'tags' | 'stages' | 'custom_field' | 'csv';
 type CustomFieldOperator = 'is' | 'is_not' | 'contains';
 
 interface CustomFieldFilter {
@@ -31,6 +32,7 @@ interface CustomFieldFilter {
 interface AudienceConfig {
   type: AudienceType;
   tagIds?: string[];
+  stageIds?: string[];
   customField?: CustomFieldFilter;
   csvContacts?: { phone: string; name?: string }[];
   excludeTagIds?: string[];
@@ -51,47 +53,66 @@ export function Step2SelectAudience({
 }: Step2Props) {
   const t = useTranslations('Broadcasts.wizard');
 
-  const OPERATOR_OPTIONS = useMemo<{ value: CustomFieldOperator; label: string }[]>(() => [
-    { value: 'is', label: t('selectAudience.operatorIs') },
-    { value: 'is_not', label: t('selectAudience.operatorIsNot') },
-    { value: 'contains', label: t('selectAudience.operatorContains') },
-  ], [t]);
+  const OPERATOR_OPTIONS = useMemo<
+    { value: CustomFieldOperator; label: string }[]
+  >(
+    () => [
+      { value: 'is', label: t('selectAudience.operatorIs') },
+      { value: 'is_not', label: t('selectAudience.operatorIsNot') },
+      { value: 'contains', label: t('selectAudience.operatorContains') },
+    ],
+    [t]
+  );
 
-  const audienceOptions = useMemo<{
-    type: AudienceType;
-    label: string;
-    description: string;
-    icon: typeof Users;
-  }[]>(() => [
+  const audienceOptions = useMemo<
     {
-      type: 'all',
-      label: t('selectAudience.method.all'),
-      description: t('selectAudience.allDescLoading'),
-      icon: Users,
-    },
-    {
-      type: 'tags',
-      label: t('selectAudience.method.tags'),
-      description: t('selectAudience.tagDesc'),
-      icon: Tags,
-    },
-    {
-      type: 'custom_field',
-      label: t('selectAudience.method.customField'),
-      description: t('selectAudience.customFieldDesc'),
-      icon: Filter,
-    },
-    {
-      type: 'csv',
-      label: t('selectAudience.method.csv'),
-      description: t('selectAudience.csvDesc'),
-      icon: Upload,
-    },
-  ], [t]);
+      type: AudienceType;
+      label: string;
+      description: string;
+      icon: typeof Users;
+    }[]
+  >(
+    () => [
+      {
+        type: 'all',
+        label: t('selectAudience.method.all'),
+        description: t('selectAudience.allDescLoading'),
+        icon: Users,
+      },
+      {
+        type: 'tags',
+        label: t('selectAudience.method.tags'),
+        description: t('selectAudience.tagDesc'),
+        icon: Tags,
+      },
+      {
+        type: 'stages',
+        label: t('selectAudience.method.stages'),
+        description: t('selectAudience.stageDesc'),
+        icon: Kanban,
+      },
+      {
+        type: 'custom_field',
+        label: t('selectAudience.method.customField'),
+        description: t('selectAudience.customFieldDesc'),
+        icon: Filter,
+      },
+      {
+        type: 'csv',
+        label: t('selectAudience.method.csv'),
+        description: t('selectAudience.csvDesc'),
+        icon: Upload,
+      },
+    ],
+    [t]
+  );
   const [tags, setTags] = useState<Tag[]>([]);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [stages, setStages] = useState<PipelineStage[]>([]);
   const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [loadingTags, setLoadingTags] = useState(false);
   const [loadingFields, setLoadingFields] = useState(false);
+  const [loadingStages, setLoadingStages] = useState(false);
   const [estimatedCount, setEstimatedCount] = useState<number | null>(null);
   const [loadingCount, setLoadingCount] = useState(false);
   // The picked file's name, shown back to the user. The parsed rows
@@ -140,6 +161,28 @@ export function Step2SelectAudience({
     fetchFields();
   }, [audience.type]);
 
+  // Pipeline stages are only needed for the lead-stage audience picker.
+  useEffect(() => {
+    if (audience.type !== 'stages') return;
+    async function fetchStages() {
+      setLoadingStages(true);
+      try {
+        const supabase = createClient();
+        const [{ data: pipelineRows }, { data: stageRows }] = await Promise.all(
+          [
+            supabase.from('pipelines').select('*').order('name'),
+            supabase.from('pipeline_stages').select('*').order('position'),
+          ]
+        );
+        setPipelines(pipelineRows ?? []);
+        setStages(stageRows ?? []);
+      } finally {
+        setLoadingStages(false);
+      }
+    }
+    fetchStages();
+  }, [audience.type]);
+
   const fetchEstimatedCount = useCallback(async () => {
     setLoadingCount(true);
     try {
@@ -160,6 +203,21 @@ export function Step2SelectAudience({
           .select('contact_id')
           .in('tag_id', audience.tagIds);
         baseIds = new Set((data ?? []).map((r) => r.contact_id));
+      } else if (
+        audience.type === 'stages' &&
+        audience.stageIds &&
+        audience.stageIds.length > 0
+      ) {
+        const { data } = await supabase
+          .from('deals')
+          .select('contact_id')
+          .in('stage_id', audience.stageIds)
+          .not('contact_id', 'is', null);
+        baseIds = new Set(
+          (data ?? [])
+            .map((deal) => deal.contact_id)
+            .filter((id): id is string => Boolean(id))
+        );
       } else if (
         audience.type === 'custom_field' &&
         audience.customField?.fieldId &&
@@ -199,9 +257,7 @@ export function Step2SelectAudience({
       }
 
       if (baseIds) {
-        const effective = [...baseIds].filter(
-          (id) => !excludeSet?.has(id),
-        );
+        const effective = [...baseIds].filter((id) => !excludeSet?.has(id));
         setEstimatedCount(effective.length);
       } else {
         // "All" — fetch the total, then subtract exclude set if any.
@@ -209,7 +265,9 @@ export function Step2SelectAudience({
           .from('contacts')
           .select('*', { count: 'exact', head: true });
         const total = count ?? 0;
-        setEstimatedCount(excludeSet ? Math.max(0, total - excludeSet.size) : total);
+        setEstimatedCount(
+          excludeSet ? Math.max(0, total - excludeSet.size) : total
+        );
       }
     } finally {
       setLoadingCount(false);
@@ -217,6 +275,7 @@ export function Step2SelectAudience({
   }, [
     audience.type,
     audience.tagIds,
+    audience.stageIds,
     audience.customField,
     audience.csvContacts,
     audience.excludeTagIds,
@@ -236,7 +295,7 @@ export function Step2SelectAudience({
       toast.error(
         result.error === 'missing_phone_column'
           ? t('selectAudience.errorCsvMissingPhone')
-          : t('selectAudience.errorCsvParse'),
+          : t('selectAudience.errorCsvParse')
       );
       // Clear the input so re-picking the same corrected file still
       // fires `change` (the browser suppresses it for an identical value).
@@ -258,6 +317,14 @@ export function Step2SelectAudience({
     onUpdate({ ...audience, tagIds: updated });
   }
 
+  function toggleStage(stageId: string) {
+    const current = audience.stageIds ?? [];
+    const updated = current.includes(stageId)
+      ? current.filter((id) => id !== stageId)
+      : [...current, stageId];
+    onUpdate({ ...audience, stageIds: updated });
+  }
+
   function toggleExcludeTag(tagId: string) {
     const current = audience.excludeTagIds ?? [];
     const updated = current.includes(tagId)
@@ -277,7 +344,12 @@ export function Step2SelectAudience({
 
   const isValid =
     audience.type === 'all' ||
-    (audience.type === 'tags' && audience.tagIds && audience.tagIds.length > 0) ||
+    (audience.type === 'tags' &&
+      audience.tagIds &&
+      audience.tagIds.length > 0) ||
+    (audience.type === 'stages' &&
+      audience.stageIds &&
+      audience.stageIds.length > 0) ||
     (audience.type === 'custom_field' &&
       !!audience.customField?.fieldId &&
       audience.customField.value.length > 0) ||
@@ -288,67 +360,83 @@ export function Step2SelectAudience({
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-foreground">{t('selectAudience.title')}</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h2 className="text-foreground text-lg font-semibold">
+          {t('selectAudience.title')}
+        </h2>
+        <p className="text-muted-foreground mt-1 text-sm">
           {t('selectAudience.subtitle')}
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {audienceOptions.map((option: { type: AudienceType; label: string; description: string; icon: typeof Users }) => {
-          const isSelected = audience.type === option.type;
-          const Icon = option.icon;
-          return (
-            <button
-              key={option.type}
-              onClick={() =>
-                onUpdate({
-                  ...audience,
-                  type: option.type,
-                  // Wipe shape fields from other types to avoid stale
-                  // config leaking across selections.
-                  tagIds: option.type === 'tags' ? audience.tagIds : undefined,
-                  customField:
-                    option.type === 'custom_field'
-                      ? audience.customField
-                      : undefined,
-                  csvContacts:
-                    option.type === 'csv' ? audience.csvContacts : undefined,
-                })
-              }
-              className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-all ${
-                isSelected
-                  ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                  : 'border-border bg-card/50 hover:border-border'
-              }`}
-            >
-              <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+        {audienceOptions.map(
+          (option: {
+            type: AudienceType;
+            label: string;
+            description: string;
+            icon: typeof Users;
+          }) => {
+            const isSelected = audience.type === option.type;
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.type}
+                onClick={() =>
+                  onUpdate({
+                    ...audience,
+                    type: option.type,
+                    // Wipe shape fields from other types to avoid stale
+                    // config leaking across selections.
+                    tagIds:
+                      option.type === 'tags' ? audience.tagIds : undefined,
+                    stageIds:
+                      option.type === 'stages' ? audience.stageIds : undefined,
+                    customField:
+                      option.type === 'custom_field'
+                        ? audience.customField
+                        : undefined,
+                    csvContacts:
+                      option.type === 'csv' ? audience.csvContacts : undefined,
+                  })
+                }
+                className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-all ${
                   isSelected
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-muted text-muted-foreground'
+                    ? 'border-primary bg-primary/5 ring-primary/30 ring-1'
+                    : 'border-border bg-card/50 hover:border-border'
                 }`}
               >
-                <Icon className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{option.label}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {option.description}
-                </p>
-              </div>
-            </button>
-          );
-        })}
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                    isSelected
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="text-foreground text-sm font-medium">
+                    {option.label}
+                  </p>
+                  <p className="text-muted-foreground mt-0.5 text-xs">
+                    {option.description}
+                  </p>
+                </div>
+              </button>
+            );
+          }
+        )}
       </div>
 
       {audience.type === 'tags' && (
-        <div className="rounded-xl border border-border bg-card/50 p-4">
-          <p className="mb-3 text-sm font-medium text-foreground">{t('selectAudience.selectTags')}</p>
+        <div className="border-border bg-card/50 rounded-xl border p-4">
+          <p className="text-foreground mb-3 text-sm font-medium">
+            {t('selectAudience.selectTags')}
+          </p>
           {loadingTags ? (
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <Loader2 className="text-primary h-5 w-5 animate-spin" />
           ) : tags.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {t('selectAudience.noTagsFound')}
             </p>
           ) : (
@@ -378,13 +466,67 @@ export function Step2SelectAudience({
         </div>
       )}
 
+      {audience.type === 'stages' && (
+        <div className="border-border bg-card/50 space-y-4 rounded-xl border p-4">
+          <p className="text-foreground text-sm font-medium">
+            {t('selectAudience.selectStages')}
+          </p>
+          {loadingStages ? (
+            <Loader2 className="text-primary h-5 w-5 animate-spin" />
+          ) : stages.length === 0 ? (
+            <p className="text-muted-foreground text-xs">
+              {t('selectAudience.noStagesFound')}
+            </p>
+          ) : (
+            pipelines.map((pipeline) => {
+              const pipelineStages = stages.filter(
+                (stage) => stage.pipeline_id === pipeline.id
+              );
+              if (pipelineStages.length === 0) return null;
+              return (
+                <div key={pipeline.id} className="space-y-2">
+                  <p className="text-muted-foreground text-xs font-medium">
+                    {pipeline.name}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {pipelineStages.map((stage) => {
+                      const isSelected = audience.stageIds?.includes(stage.id);
+                      return (
+                        <button
+                          key={stage.id}
+                          type="button"
+                          onClick={() => toggleStage(stage.id)}
+                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                            isSelected
+                              ? 'border-primary/30 bg-primary/10 text-primary'
+                              : 'border-border bg-muted text-muted-foreground hover:border-border'
+                          }`}
+                        >
+                          <span
+                            className="mr-1.5 h-2 w-2 rounded-full"
+                            style={{ backgroundColor: stage.color }}
+                          />
+                          {stage.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       {audience.type === 'custom_field' && (
-        <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4">
-          <p className="text-sm font-medium text-foreground">{t('selectAudience.method.customField')}</p>
+        <div className="border-border bg-card/50 space-y-3 rounded-xl border p-4">
+          <p className="text-foreground text-sm font-medium">
+            {t('selectAudience.method.customField')}
+          </p>
           {loadingFields ? (
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            <Loader2 className="text-primary h-5 w-5 animate-spin" />
           ) : customFields.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {t('selectAudience.errorLoadFields')}
             </p>
           ) : (
@@ -392,7 +534,7 @@ export function Step2SelectAudience({
               <select
                 value={audience.customField?.fieldId ?? ''}
                 onChange={(e) => updateCustomField({ fieldId: e.target.value })}
-                className="h-9 rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                className="border-border bg-muted text-foreground focus:border-primary focus:ring-primary h-9 rounded-lg border px-2.5 text-sm outline-none focus:ring-1"
               >
                 <option value="">{t('selectAudience.selectField')}</option>
                 {customFields.map((f) => (
@@ -408,20 +550,22 @@ export function Step2SelectAudience({
                     operator: e.target.value as CustomFieldOperator,
                   })
                 }
-                className="h-9 rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                className="border-border bg-muted text-foreground focus:border-primary focus:ring-primary h-9 rounded-lg border px-2.5 text-sm outline-none focus:ring-1"
               >
-                {OPERATOR_OPTIONS.map((op: { value: CustomFieldOperator; label: string }) => (
-                  <option key={op.value} value={op.value}>
-                    {op.label}
-                  </option>
-                ))}
+                {OPERATOR_OPTIONS.map(
+                  (op: { value: CustomFieldOperator; label: string }) => (
+                    <option key={op.value} value={op.value}>
+                      {op.label}
+                    </option>
+                  )
+                )}
               </select>
               <input
                 type="text"
                 value={audience.customField?.value ?? ''}
                 onChange={(e) => updateCustomField({ value: e.target.value })}
                 placeholder={t('selectAudience.valuePlaceholder')}
-                className="h-9 rounded-lg border border-border bg-muted px-2.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
+                className="border-border bg-muted text-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-primary h-9 rounded-lg border px-2.5 text-sm outline-none focus:ring-1"
               />
             </div>
           )}
@@ -429,12 +573,12 @@ export function Step2SelectAudience({
       )}
 
       {audience.type === 'csv' && (
-        <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4">
+        <div className="border-border bg-card/50 space-y-3 rounded-xl border p-4">
           <div>
-            <p className="text-sm font-medium text-foreground">
+            <p className="text-foreground text-sm font-medium">
               {t('selectAudience.uploadCsv')}
             </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className="text-muted-foreground mt-0.5 text-xs">
               {t('selectAudience.csvFormatDesc')}
             </p>
           </div>
@@ -442,20 +586,20 @@ export function Step2SelectAudience({
           <button
             type="button"
             onClick={() => csvInputRef.current?.click()}
-            className="group flex w-full flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-muted/40 px-4 py-6 text-center transition-colors hover:border-primary/40 hover:bg-muted/70"
+            className="group border-border bg-muted/40 hover:border-primary/40 hover:bg-muted/70 flex w-full flex-col items-center gap-2 rounded-lg border border-dashed px-4 py-6 text-center transition-colors"
           >
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-muted-foreground group-hover:text-foreground">
+            <div className="bg-muted text-muted-foreground group-hover:text-foreground flex h-10 w-10 items-center justify-center rounded-lg">
               {csvFileName ? (
                 <FileText className="h-5 w-5" />
               ) : (
                 <Upload className="h-5 w-5" />
               )}
             </div>
-            <p className="text-sm text-foreground">
+            <p className="text-foreground text-sm">
               {csvFileName ?? t('selectAudience.uploadCsv')}
             </p>
             {csvCount > 0 && (
-              <p className="text-xs text-primary">
+              <p className="text-primary text-xs">
                 {t('selectAudience.csvContactsFound', { count: csvCount })}
               </p>
             )}
@@ -472,15 +616,17 @@ export function Step2SelectAudience({
       )}
 
       {/* Exclude list — applies regardless of audience type */}
-      <div className="rounded-xl border border-border bg-card/50 p-4">
+      <div className="border-border bg-card/50 rounded-xl border p-4">
         <div className="mb-3 flex items-center gap-2">
           <X className="h-4 w-4 text-red-400" />
-          <p className="text-sm font-medium text-foreground">
+          <p className="text-foreground text-sm font-medium">
             {t('selectAudience.excludeTags')}
           </p>
         </div>
         {tags.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{t('selectAudience.noTagsFound')}</p>
+          <p className="text-muted-foreground text-xs">
+            {t('selectAudience.noTagsFound')}
+          </p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {tags.map((tag) => {
@@ -508,29 +654,33 @@ export function Step2SelectAudience({
       </div>
 
       {/* Audience Summary */}
-      <div className="rounded-xl border border-border bg-card/50 p-4">
-        <p className="mb-2 text-sm font-medium text-foreground">Audience Summary</p>
+      <div className="border-border bg-card/50 rounded-xl border p-4">
+        <p className="text-foreground mb-2 text-sm font-medium">
+          Audience Summary
+        </p>
         {loadingCount ? (
           <div className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            <span className="text-xs text-muted-foreground">Calculating…</span>
+            <Loader2 className="text-primary h-4 w-4 animate-spin" />
+            <span className="text-muted-foreground text-xs">Calculating…</span>
           </div>
         ) : estimatedCount !== null ? (
           <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-primary" />
-            <span className="text-sm text-foreground">
+            <Users className="text-primary h-4 w-4" />
+            <span className="text-foreground text-sm">
               {estimatedCount.toLocaleString()}
             </span>
-            <span className="text-xs text-muted-foreground">estimated recipients</span>
+            <span className="text-muted-foreground text-xs">
+              estimated recipients
+            </span>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">
             Select an audience type to see the estimate.
           </p>
         )}
       </div>
 
-      <div className="flex items-center justify-between border-t border-border pt-4">
+      <div className="border-border flex items-center justify-between border-t pt-4">
         <Button
           variant="outline"
           onClick={onBack}

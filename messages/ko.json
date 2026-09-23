@@ -780,9 +780,13 @@
         "errorLoad": "템플릿을 불러오지 못했습니다"
       },
       "selectAudience": {
+        "stageDesc": "선택한 파이프라인 단계에 거래가 있는 연락처에 보냅니다.",
+        "selectStages": "잠재 고객 단계 선택",
+        "noStagesFound": "파이프라인 단계를 찾을 수 없습니다.",
         "title": "대상 선택",
         "subtitle": "이 브로드캐스트를 받을 대상을 선택하세요.",
         "method": {
+          "stages": "잠재 고객 단계로 필터링",
           "all": "전체 연락처",
           "tags": "태그로 필터링",
           "customField": "커스텀 필드",
@@ -842,6 +846,7 @@
         }
       },
       "scheduleSend": {
+        "audienceStages": "잠재 고객 단계로 필터링됨",
         "title": "검토 및 전송",
         "subtitle": "브로드캐스트 이름을 입력하고 전송을 확인하세요.",
         "broadcastName": "브로드캐스트 이름",
