@@ -119,7 +119,12 @@ describe('createBroadcast atomicity (#370)', () => {
     expect(calls.usedDirectInsert).toBe(0);
     expect(plan.broadcastId).toBe('b-1');
     expect(plan.planned).toEqual([
-      { recipientRowId: 'r-1', phone: '14155550123', params: [] },
+      {
+        recipientRowId: 'r-1',
+        contactId: 'c1',
+        phone: '14155550123',
+        params: [],
+      },
     ]);
   });
 
@@ -154,7 +159,7 @@ describe('createBroadcast atomicity (#370)', () => {
 function statusDb(
   counts: Record<string, number>,
   total: number,
-  writes: { update?: Record<string, unknown> },
+  writes: { update?: Record<string, unknown> }
 ) {
   return {
     from(table: string) {
@@ -183,7 +188,10 @@ function statusDb(
 describe('finalizeBroadcastStatus', () => {
   it('leaves a capped pass in "sending" while recipients are still pending', async () => {
     const writes: { update?: Record<string, unknown> } = {};
-    await finalizeBroadcastStatus(statusDb({ pending: 25 }, 1025, writes), 'b-1');
+    await finalizeBroadcastStatus(
+      statusDb({ pending: 25 }, 1025, writes),
+      'b-1'
+    );
     // No write at all — the UI keeps offering Resume.
     expect(writes.update).toBeUndefined();
   });
@@ -192,7 +200,7 @@ describe('finalizeBroadcastStatus', () => {
     const writes: { update?: Record<string, unknown> } = {};
     await finalizeBroadcastStatus(
       statusDb({ pending: 0, failed: 10 }, 10, writes),
-      'b-1',
+      'b-1'
     );
     expect(writes.update?.status).toBe('failed');
   });
@@ -201,7 +209,7 @@ describe('finalizeBroadcastStatus', () => {
     const writes: { update?: Record<string, unknown> } = {};
     await finalizeBroadcastStatus(
       statusDb({ pending: 0, failed: 3 }, 10, writes),
-      'b-1',
+      'b-1'
     );
     // 7 people got the message; failed_count carries the other 3.
     expect(writes.update?.status).toBe('sent');
@@ -213,7 +221,7 @@ describe('finalizeBroadcastStatus', () => {
     // failed. Pre-fix this wrote 'failed' off a pass-local counter.
     await finalizeBroadcastStatus(
       statusDb({ pending: 0, failed: 200 }, 1000, writes),
-      'b-1',
+      'b-1'
     );
     expect(writes.update?.status).toBe('sent');
   });

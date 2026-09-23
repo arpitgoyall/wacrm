@@ -29,6 +29,7 @@ import {
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import type { MessageTemplate } from '@/types';
 import { findOrCreateContact } from '@/lib/api/v1/contacts';
+import { persistBroadcastMessage } from '@/lib/whatsapp/broadcast-inbox';
 
 /** Thrown by createBroadcast on a caller-visible failure; route maps it. */
 export class BroadcastError extends Error {
@@ -58,12 +59,15 @@ export interface CreateBroadcastParams {
 
 interface PlannedRecipient {
   recipientRowId: string;
+  contactId: string;
   phone: string;
   params: string[];
 }
 
 export interface BroadcastPlan {
   broadcastId: string;
+  accountId: string;
+  auditUserId: string;
   templateName: string;
   templateLanguage: string;
   phoneNumberId: string;
@@ -146,7 +150,9 @@ export async function createBroadcast(
   const resolved: { contactId: string; phone: string; params: string[] }[] = [];
   let rejected = 0;
   for (const r of recipients) {
-    const sanitized = sanitizePhoneForMeta(typeof r.to === 'string' ? r.to : '');
+    const sanitized = sanitizePhoneForMeta(
+      typeof r.to === 'string' ? r.to : ''
+    );
     if (!isValidE164(sanitized)) {
       rejected++;
       continue;
@@ -226,12 +232,19 @@ export async function createBroadcast(
   const planned: PlannedRecipient[] = createdRows.map(
     (row: { recipient_id: string; contact_id: string }) => {
       const r = byContact.get(row.contact_id)!;
-      return { recipientRowId: row.recipient_id, phone: r.phone, params: r.params };
+      return {
+        recipientRowId: row.recipient_id,
+        contactId: row.contact_id,
+        phone: r.phone,
+        params: r.params,
+      };
     }
   );
 
   return {
     broadcastId,
+    accountId,
+    auditUserId,
     templateName,
     templateLanguage: resolvedTemplate.language,
     phoneNumberId: config.phone_number_id,
@@ -279,7 +292,8 @@ export async function deliverBroadcast(
         lastError = null;
         break;
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
         lastError = message;
         // Only a "recipient not allowed" error is worth another variant.
         if (!isRecipientNotAllowedError(message)) break;
@@ -287,6 +301,24 @@ export async function deliverBroadcast(
     }
 
     if (sentMessageId) {
+      try {
+        await persistBroadcastMessage(db, {
+          accountId: plan.accountId,
+          auditUserId: plan.auditUserId,
+          contactId: recipient.contactId,
+          whatsappMessageId: sentMessageId,
+          templateName: plan.templateName,
+          params: recipient.params,
+          template: plan.templateRow,
+        });
+      } catch (inboxError) {
+        // Meta delivery is authoritative; do not mark it failed merely
+        // because the local inbox mirror needs repair.
+        console.error(
+          '[broadcast-core] sent via Meta but failed to mirror into inbox:',
+          inboxError
+        );
+      }
       await db
         .from('broadcast_recipients')
         .update({

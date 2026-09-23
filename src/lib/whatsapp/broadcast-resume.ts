@@ -18,7 +18,10 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { BroadcastError, type BroadcastPlan } from '@/lib/whatsapp/broadcast-core';
+import {
+  BroadcastError,
+  type BroadcastPlan,
+} from '@/lib/whatsapp/broadcast-core';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body';
 import { sanitizePhoneForMeta, isValidE164 } from '@/lib/whatsapp/phone-utils';
@@ -117,6 +120,7 @@ export interface ResumePlan {
 
 interface RecipientRow {
   id: string;
+  contact_id: string;
   template_params: unknown;
   contact: { phone?: string | null } | { phone?: string | null }[] | null;
 }
@@ -146,7 +150,7 @@ export async function planBroadcastResume(
 ): Promise<ResumePlan> {
   const { data: broadcast, error: bcError } = await db
     .from('broadcasts')
-    .select('id, template_name, template_language')
+    .select('id, user_id, template_name, template_language')
     .eq('id', broadcastId)
     .eq('account_id', accountId)
     .maybeSingle();
@@ -158,7 +162,7 @@ export async function planBroadcastResume(
   const statuses = scopeStatuses(scope);
   const { data: rawRows, error: recError } = await db
     .from('broadcast_recipients')
-    .select('id, template_params, contact:contacts(phone)')
+    .select('id, contact_id, template_params, contact:contacts(phone)')
     .eq('broadcast_id', broadcastId)
     .in('status', statuses)
     // Oldest first, so repeated capped passes chew through the backlog
@@ -166,7 +170,10 @@ export async function planBroadcastResume(
     .order('created_at', { ascending: true });
 
   if (recError) {
-    console.error('[broadcast-resume] recipient load failed:', recError.message);
+    console.error(
+      '[broadcast-resume] recipient load failed:',
+      recError.message
+    );
     throw new BroadcastError('internal', 'Failed to load recipients', 500);
   }
 
@@ -234,6 +241,8 @@ export async function planBroadcastResume(
 
   const plan: BroadcastPlan = {
     broadcastId,
+    accountId,
+    auditUserId: broadcast.user_id,
     templateName: broadcast.template_name,
     templateLanguage: resolvedTemplate.language,
     phoneNumberId: config.phone_number_id,
@@ -241,6 +250,7 @@ export async function planBroadcastResume(
     templateRow: resolvedTemplate.row,
     planned: slice.map((row) => ({
       recipientRowId: row.id,
+      contactId: row.contact_id,
       phone: sanitizePhoneForMeta(contactPhone(row) ?? ''),
       params: Array.isArray(row.template_params)
         ? row.template_params.filter((p): p is string => typeof p === 'string')

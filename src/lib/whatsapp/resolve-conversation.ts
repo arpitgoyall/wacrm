@@ -142,7 +142,7 @@ export async function resolveConversationByPhone(
   // `.maybeSingle()`, which errors on ≥2 rows: if duplicates predate the
   // unique index (migration 036), we resolve to the canonical survivor
   // instead of falling through and creating yet another (issue #363).
-  const conversationId = await findOrCreateConversationRow(
+  const conversationId = await resolveConversationForContact(
     db,
     accountId,
     contactId,
@@ -158,7 +158,7 @@ export async function resolveConversationByPhone(
  * the inbound webhook does: on a 23505 from a concurrent create,
  * re-resolve the winning row rather than failing the send.
  */
-async function findOrCreateConversationRow(
+export async function resolveConversationForContact(
   db: SupabaseClient,
   accountId: string,
   contactId: string,
@@ -174,7 +174,11 @@ async function findOrCreateConversationRow(
 
   if (findErr) {
     console.error('[resolve-conversation] conversation lookup error:', findErr);
-    throw new SendMessageError('db_error', 'Failed to resolve conversation', 500);
+    throw new SendMessageError(
+      'db_error',
+      'Failed to resolve conversation',
+      500
+    );
   }
 
   if (existing && existing.length > 0) {
@@ -205,7 +209,11 @@ async function findOrCreateConversationRow(
       }
     }
     console.error('[resolve-conversation] conversation create error:', convErr);
-    throw new SendMessageError('db_error', 'Failed to create conversation', 500);
+    throw new SendMessageError(
+      'db_error',
+      'Failed to create conversation',
+      500
+    );
   }
 
   return newConv.id;
