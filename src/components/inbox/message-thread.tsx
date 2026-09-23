@@ -55,6 +55,7 @@ import { PipelineStageControl } from './pipeline-stage-control';
 import { buildReplyPreview } from './reply-quote';
 import { renderTemplateBody } from '@/lib/whatsapp/template-body';
 import { toast } from 'sonner';
+import { canClearConversationUnread } from '@/lib/inbox/unread';
 
 interface ReplyDraft {
   id: string;
@@ -280,6 +281,10 @@ export function MessageThread({
 
   const conversationId = conversation?.id;
   const hasUnread = (conversation?.unread_count ?? 0) > 0;
+  const canClearUnread = canClearConversationUnread(
+    user?.id,
+    conversation?.assigned_agent_id
+  );
 
   const mediaMessageId =
     openMedia && openMedia.conversationId === conversationId
@@ -525,7 +530,7 @@ export function MessageThread({
   // Guarding on hasUnread prevents the eq-update loop: once unread_count
   // is 0 the condition is false, so no further UPDATE is issued.
   useEffect(() => {
-    if (!conversationId || !hasUnread) return;
+    if (!conversationId || !hasUnread || !canClearUnread) return;
     const supabase = createClient();
     supabase
       .from('conversations')
@@ -534,7 +539,7 @@ export function MessageThread({
       .then(({ error }) => {
         if (error) console.error('Failed to reset unread_count:', error);
       });
-  }, [conversationId, hasUnread]);
+  }, [conversationId, hasUnread, canClearUnread]);
 
   // Viewing a thread clears its notification-centre entries for this
   // user (new message / new conversation), so the bell badge tracks
@@ -949,11 +954,14 @@ export function MessageThread({
     async (agentId: string | null) => {
       if (!conversation) return;
 
-      const response = await fetch(`/api/conversations/${conversation.id}/assignment`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agent_id: agentId }),
-      });
+      const response = await fetch(
+        `/api/conversations/${conversation.id}/assignment`,
+        {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ agent_id: agentId }),
+        }
+      );
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));

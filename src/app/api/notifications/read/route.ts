@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account';
+import { canClearConversationUnread } from '@/lib/inbox/unread';
 
 // POST /api/notifications/read  { conversation_id }
 //
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
     if (!conversationId) {
       return NextResponse.json(
         { error: 'conversation_id required' },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -35,10 +36,21 @@ export async function POST(request: Request) {
       .in('type', ['new_message', 'new_conversation'])
       .is('read_at', null);
 
-    await supabase
+    const { data: conversation } = await supabase
       .from('conversations')
-      .update({ unread_count: 0 })
-      .eq('id', conversationId);
+      .select('assigned_agent_id')
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (
+      conversation &&
+      canClearConversationUnread(userId, conversation.assigned_agent_id)
+    ) {
+      await supabase
+        .from('conversations')
+        .update({ unread_count: 0 })
+        .eq('id', conversationId);
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

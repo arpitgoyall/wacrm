@@ -16,6 +16,8 @@ import { ContactSidebar } from "@/components/inbox/contact-sidebar";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
+import { canClearConversationUnread } from "@/lib/inbox/unread";
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
@@ -36,6 +38,7 @@ function InboxPageInner() {
   const t = useTranslations("Inbox.page");
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
   /**
    * `?c=<id>` deep-link support. Used when landing here from the
    * dashboard's recent-conversations list so the right thread opens
@@ -49,7 +52,7 @@ function InboxPageInner() {
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
-    null
+    null,
   );
   /**
    * Bumped whenever we want children (ConversationList, MessageThread)
@@ -228,7 +231,7 @@ function InboxPageInner() {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             // Replace optimistic message if it exists
             const withoutOptimistic = prev.filter(
-              (m) => !m.id.startsWith("temp-")
+              (m) => !m.id.startsWith("temp-"),
             );
             return [...withoutOptimistic, newMsg];
           });
@@ -268,11 +271,11 @@ function InboxPageInner() {
       if (event.eventType === "UPDATE") {
         // Update message status
         setMessages((prev) =>
-          prev.map((m) => (m.id === newMsg.id ? { ...m, ...newMsg } : m))
+          prev.map((m) => (m.id === newMsg.id ? { ...m, ...newMsg } : m)),
         );
       }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, hydrateConversation],
   );
 
   // Handle realtime conversation events
@@ -328,13 +331,11 @@ function InboxPageInner() {
 
         // Update active conversation if it changed
         if (activeConversation && conv.id === activeConversation.id) {
-          setActiveConversation((prev) =>
-            prev ? { ...prev, ...conv } : prev
-          );
+          setActiveConversation((prev) => (prev ? { ...prev, ...conv } : prev));
         }
       }
     },
-    [activeConversation, hydrateConversation]
+    [activeConversation, hydrateConversation],
   );
 
   // Subscribe to realtime. The `isConnected` flag below feeds the
@@ -433,7 +434,10 @@ function InboxPageInner() {
           // does — the user just deep-linked into this conv, treat that the
           // same as a click. Leaves activeConversation.unread_count alone so
           // the MessageThread reset effect still fires the server UPDATE.
-          if (match.unread_count > 0) {
+          if (
+            match.unread_count > 0 &&
+            canClearConversationUnread(user?.id, match.assigned_agent_id)
+          ) {
             setConversations((prev) =>
               prev.map((c) =>
                 c.id === match.id ? { ...c, unread_count: 0 } : c,
@@ -443,7 +447,7 @@ function InboxPageInner() {
         }
       }
     },
-    [deepLinkConvId, activeConversation?.id]
+    [deepLinkConvId, activeConversation?.id, user?.id],
   );
 
   const handleSelectConversation = useCallback(
@@ -465,13 +469,15 @@ function InboxPageInner() {
       // here means the user sees the badge disappear the instant they
       // click instead of waiting for the round-trip — and it persists
       // even if the realtime UPDATE is dropped.
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === conv.id && c.unread_count > 0
-            ? { ...c, unread_count: 0 }
-            : c,
-        ),
-      );
+      if (canClearConversationUnread(user?.id, conv.assigned_agent_id)) {
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === conv.id && c.unread_count > 0
+              ? { ...c, unread_count: 0 }
+              : c,
+          ),
+        );
+      }
       // Record the selection on the deep-link ref BEFORE we change the
       // URL. The router.replace below flips `deepLinkConvId`, which can
       // in turn cause ConversationList to refetch and eventually call
@@ -485,7 +491,7 @@ function InboxPageInner() {
       // replace() to avoid polluting browser history with every click.
       router.replace(`/inbox?c=${conv.id}`, { scroll: false });
     },
-    [activeConversation?.id, router]
+    [activeConversation?.id, router, user?.id],
   );
 
   // Mobile "back" — deselect the conversation so the list pane comes
@@ -501,7 +507,6 @@ function InboxPageInner() {
     router.replace("/inbox", { scroll: false });
   }, [router]);
 
-
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
   }, []);
@@ -516,10 +521,10 @@ function InboxPageInner() {
   const handleUpdateMessage = useCallback(
     (id: string, updates: Partial<Message>) => {
       setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
+        prev.map((m) => (m.id === id ? { ...m, ...updates } : m)),
       );
     },
-    []
+    [],
   );
 
   const handleAssignChange = useCallback(
@@ -528,18 +533,18 @@ function InboxPageInner() {
         prev.map((c) =>
           c.id === conversationId
             ? { ...c, assigned_agent_id: assignedAgentId ?? undefined }
-            : c
-        )
+            : c,
+        ),
       );
       if (activeConversation?.id === conversationId) {
         setActiveConversation((prev) =>
           prev
             ? { ...prev, assigned_agent_id: assignedAgentId ?? undefined }
-            : prev
+            : prev,
         );
       }
     },
-    [activeConversation]
+    [activeConversation],
   );
 
   // On mobile (<lg) we show a SINGLE pane — either the list or the
@@ -556,9 +561,7 @@ function InboxPageInner() {
       {whatsappConnected === false && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-400" />
-          <p className="text-xs text-amber-400">
-            {t("whatsappNotConnected")}
-          </p>
+          <p className="text-xs text-amber-400">{t("whatsappNotConnected")}</p>
         </div>
       )}
 
