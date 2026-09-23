@@ -143,6 +143,7 @@
       "searchPlaceholder": "대화 검색...",
       "filterAll": "전체",
       "filterUnread": "읽지 않음",
+      "filterAwaitingReply": "답변 대기 중",
       "filterOpen": "열림",
       "filterPending": "대기 중",
       "filterClosed": "닫힘",

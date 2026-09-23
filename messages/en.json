@@ -142,6 +142,7 @@
       "searchPlaceholder": "Search conversations...",
       "filterAll": "All",
       "filterUnread": "Unread",
+      "filterAwaitingReply": "Awaiting reply",
       "filterOpen": "Open",
       "filterPending": "Pending",
       "filterClosed": "Closed",
