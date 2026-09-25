@@ -198,7 +198,7 @@ export interface Conversation {
   last_message_text?: string;
   last_message_at?: string;
   /** Sender of the newest message, used to identify threads awaiting a reply. */
-  last_message_sender_type?: SenderType;
+  last_message_sender_type?: SenderType | null;
   unread_count: number;
   created_at: string;
   updated_at: string;

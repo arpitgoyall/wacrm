@@ -134,6 +134,36 @@ describe('matchesAttentionFilter', () => {
 });
 
 describe('normalizeConversation', () => {
+  it('finds read unanswered chats when the cached sender is missing or stale', () => {
+    for (const cached of [undefined, null, 'agent', 'bot'] as const) {
+      const conversation = normalizeConversation({
+        ...makeConversation(null),
+        last_message_sender_type: cached,
+        latest_message: [{ sender_type: 'customer' }],
+      });
+      expect(matchesAttentionFilter(conversation, 'awaiting_reply')).toBe(true);
+      expect(conversation).not.toHaveProperty('latest_message');
+    }
+  });
+
+  it('excludes replied and empty chats despite a cached customer sender', () => {
+    for (const latest_message of [
+      [{ sender_type: 'agent' as const }],
+      [{ sender_type: 'bot' as const }],
+      [],
+    ]) {
+      const conversation = normalizeConversation({
+        ...makeConversation({ name: 'Customer' }),
+        last_message_sender_type: 'customer',
+        latest_message,
+      });
+      expect(matchesAttentionFilter(conversation, 'awaiting_reply')).toBe(
+        false
+      );
+      expect(conversation.contact?.name).toBe('Customer');
+    }
+  });
+
   it('flattens embedded contact_tags into contact.tags', () => {
     const raw = {
       id: 'c1',

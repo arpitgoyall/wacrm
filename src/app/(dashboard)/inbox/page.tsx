@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { createClient } from '@/lib/supabase/client';
 import {
-  CONVERSATION_SELECT,
+  INBOX_CONVERSATION_SELECT,
   normalizeConversation,
 } from '@/lib/inbox/conversations';
 import type { Conversation, Message, Contact } from '@/types';
@@ -138,7 +138,13 @@ function InboxPageInner() {
       const supabase = createClient();
       const { data, error } = await supabase
         .from('conversations')
-        .select(CONVERSATION_SELECT)
+        .select(INBOX_CONVERSATION_SELECT)
+        .order('created_at', {
+          referencedTable: 'latest_message',
+          ascending: false,
+        })
+        .order('id', { referencedTable: 'latest_message', ascending: false })
+        .limit(1, { referencedTable: 'latest_message' })
         .eq('id', convId)
         .maybeSingle();
       if (error) {
@@ -164,7 +170,13 @@ function InboxPageInner() {
           // realtime payloads never carry.
           return prev.map((c) =>
             c.id === fetched.id
-              ? { ...c, contact: c.contact ?? fetched.contact }
+              ? {
+                  ...c,
+                  contact: c.contact ?? fetched.contact,
+                  last_message_sender_type:
+                    c.last_message_sender_type ??
+                    fetched.last_message_sender_type,
+                }
               : c
           );
         }
@@ -317,6 +329,9 @@ function InboxPageInner() {
                 ? {
                     ...c,
                     ...conv,
+                    // Message events own this field; conversation updates may
+                    // still carry a stale value from the database cache.
+                    last_message_sender_type: c.last_message_sender_type,
                     unread_count: isActive ? 0 : conv.unread_count,
                   }
                 : c

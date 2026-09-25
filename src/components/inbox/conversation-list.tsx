@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { createClient } from '@/lib/supabase/client';
 import {
-  CONVERSATION_SELECT,
+  INBOX_CONVERSATION_SELECT,
   type InboxAttentionFilter,
   matchesAttentionFilter,
   matchesContactFilters,
@@ -113,7 +113,13 @@ export function ConversationList({
     (async () => {
       const { data, error } = await supabase
         .from('conversations')
-        .select(CONVERSATION_SELECT)
+        .select(INBOX_CONVERSATION_SELECT)
+        .order('created_at', {
+          referencedTable: 'latest_message',
+          ascending: false,
+        })
+        .order('id', { referencedTable: 'latest_message', ascending: false })
+        .limit(1, { referencedTable: 'latest_message' })
         .order('last_message_at', { ascending: false });
 
       if (cancelled) return;

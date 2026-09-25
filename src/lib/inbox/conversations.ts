@@ -9,10 +9,15 @@ import type { Conversation, Contact, Tag } from '@/types';
 export const CONVERSATION_SELECT =
   '*, contact:contacts(*, contact_tags(tags(*)))';
 
+// Inbox callers order and limit this relation to one message per conversation.
+// Read the source message instead of depending on the optional cached sender.
+export const INBOX_CONVERSATION_SELECT = `${CONVERSATION_SELECT}, latest_message:messages(sender_type)`;
+
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
 type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
 type RawConversation = Omit<Conversation, 'contact'> & {
   contact?: RawContact | null;
+  latest_message?: { sender_type: 'customer' | 'agent' | 'bot' }[];
 };
 
 /**
@@ -21,12 +26,19 @@ type RawConversation = Omit<Conversation, 'contact'> & {
  * no contact (e.g. a freshly-inserted conversation) passes through untouched.
  */
 export function normalizeConversation(raw: RawConversation): Conversation {
-  const rawContact = raw.contact;
-  if (!rawContact) return raw as Conversation;
+  const { latest_message, ...row } = raw;
+  const conversation = latest_message
+    ? {
+        ...row,
+        last_message_sender_type: latest_message[0]?.sender_type ?? null,
+      }
+    : row;
+  const rawContact = conversation.contact;
+  if (!rawContact) return conversation as Conversation;
 
   const { contact_tags, ...contact } = rawContact;
   return {
-    ...raw,
+    ...conversation,
     contact: {
       ...contact,
       tags: (contact_tags ?? [])
