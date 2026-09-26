@@ -64,6 +64,7 @@ export function ConversationList({
   const [search, setSearch] = useState('');
   const [attentionFilter, setAttentionFilter] =
     useState<InboxAttentionFilter>('all');
+  const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'unassigned'>('all');
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
   const [selectedStageId, setSelectedStageId] = useState<string>('all');
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
@@ -339,6 +340,10 @@ export function ConversationList({
       );
     }
 
+    if (isOwner && assignmentFilter === 'unassigned') {
+      result = result.filter((conversation) => !conversation.assigned_agent_id);
+    }
+
     // "All" stages means no deal-stage restriction at all, so contacts
     // without a deal remain visible. A deal is required only when the user
     // selects one specific stage.
@@ -378,6 +383,7 @@ export function ConversationList({
   }, [
     conversations,
     attentionFilter,
+    assignmentFilter,
     search,
     selectedTagIds,
     selectedCompany,
@@ -526,6 +532,41 @@ export function ConversationList({
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {isOwner && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                className={cn(
+                  'hover:bg-muted inline-flex h-7 items-center justify-center gap-1 rounded-md px-2 text-xs',
+                  assignmentFilter === 'all'
+                    ? 'text-muted-foreground hover:text-foreground'
+                    : 'text-primary'
+                )}
+              >
+                {assignmentFilter === 'all' ? t('allChats') : t('unassigned')}
+                <ChevronDown className="h-3 w-3" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="border-border bg-popover w-44">
+                {(['all', 'unassigned'] as const).map((filter) => (
+                  <DropdownMenuItem
+                    key={filter}
+                    onClick={() => {
+                      setAssignmentFilter(filter);
+                      onClearSelection?.();
+                    }}
+                    className={cn(
+                      'text-sm',
+                      assignmentFilter === filter
+                        ? 'text-primary'
+                        : 'text-popover-foreground'
+                    )}
+                  >
+                    {filter === 'all' ? t('allChats') : t('unassigned')}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {tags.length > 0 && (
             <DropdownMenu>

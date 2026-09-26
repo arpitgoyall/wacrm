@@ -21,6 +21,16 @@ import { useTranslations } from "next-intl";
 
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,6 +75,8 @@ export function PipelineStageControl({
   const [deal, setDeal] = useState<DealRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [amount, setAmount] = useState("");
   const [updating, setUpdating] = useState(false);
 
   const load = useCallback(async () => {
@@ -104,9 +116,18 @@ export function PipelineStageControl({
     ? stages.filter((stage) => stage.pipeline_id === deal.pipeline_id)
     : stages.filter((stage) => stage.pipeline_id === pipelineId);
 
-  async function handleCreateDeal() {
+  async function handleCreateDeal(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     const firstStage = visibleStages[0];
-    if (creating || !firstStage || !pipelineId) return;
+    const dealAmount = Number(amount);
+    if (
+      creating ||
+      !firstStage ||
+      !pipelineId ||
+      amount.trim() === "" ||
+      !Number.isFinite(dealAmount) ||
+      dealAmount < 0
+    ) return;
     setCreating(true);
     const { data, error } = await supabase
       .from("deals")
@@ -117,7 +138,7 @@ export function PipelineStageControl({
         stage_id: firstStage.id,
         contact_id: contactId,
         title: contactLabel,
-        value: 0,
+        value: dealAmount,
         currency: defaultCurrency,
         status: "open",
         // Auto-assign the new deal to whoever created it.
@@ -131,6 +152,8 @@ export function PipelineStageControl({
       return;
     }
     setDeal(data as DealRow);
+    setCreateOpen(false);
+    setAmount("");
   }
 
   async function handleStageChange(stageId: string) {
@@ -159,15 +182,65 @@ export function PipelineStageControl({
 
   if (!deal) {
     return (
-      <button
-        type="button"
-        onClick={handleCreateDeal}
-        disabled={creating || visibleStages.length === 0}
-        title={visibleStages.length === 0 ? t("dealNoStagesHint") : undefined}
-        className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {creating ? t("creatingDeal") : t("createDeal")}
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          disabled={visibleStages.length === 0}
+          title={visibleStages.length === 0 ? t("dealNoStagesHint") : undefined}
+          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {t("createDeal")}
+        </button>
+        <Dialog
+          open={createOpen}
+          onOpenChange={(open) => {
+            if (creating) return;
+            setCreateOpen(open);
+            if (!open) setAmount("");
+          }}
+        >
+          <DialogContent>
+            <form onSubmit={handleCreateDeal}>
+              <DialogHeader>
+                <DialogTitle>{t("createDeal")}</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-2 py-4">
+                <Label htmlFor="inbox-deal-amount">
+                  {t("dealAmount", { currency: defaultCurrency })}
+                </Label>
+                <Input
+                  id="inbox-deal-amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  required
+                  autoFocus
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  disabled={creating}
+                />
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setCreateOpen(false);
+                    setAmount("");
+                  }}
+                  disabled={creating}
+                >
+                  {t("cancel")}
+                </Button>
+                <Button type="submit" disabled={creating || amount.trim() === ""}>
+                  {creating ? t("creatingDeal") : t("createDeal")}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </>
     );
   }
 

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import type { Pipeline, PipelineStage, Deal } from '@/types';
+import type { Pipeline, PipelineStage, Deal, Profile } from '@/types';
 import { PipelineBoard } from '@/components/pipelines/pipeline-board';
 import { PipelineSettings } from '@/components/pipelines/pipeline-settings';
 import { DealForm } from '@/components/pipelines/deal-form';
@@ -18,6 +18,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -50,12 +51,16 @@ export default function PipelinesPage() {
   const supabase = createClient();
   const canEditSettings = useCan('edit-settings');
   const canCreateDeals = useCan('send-messages');
-  const { accountId } = useAuth();
+  const { accountId, isOwner } = useAuth();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [agents, setAgents] = useState<Profile[]>([]);
+  const [selectedAgentIds, setSelectedAgentIds] = useState<string[]>([]);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Dialog / sheet state
@@ -110,6 +115,22 @@ export default function PipelinesPage() {
     },
     [supabase]
   );
+
+  useEffect(() => {
+    if (!isOwner || !accountId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('account_id', accountId)
+        .order('full_name');
+      if (!cancelled) setAgents((data ?? []) as Profile[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, isOwner, supabase]);
 
   const seedDefaultPipeline =
     useCallback(async (): Promise<Pipeline | null> => {
@@ -325,6 +346,20 @@ export default function PipelinesPage() {
   }
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
+  const filteredDeals = useMemo(() => {
+    if (!isOwner) return deals;
+    const from = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const to = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
+    return deals.filter((deal) => {
+      const createdAt = new Date(deal.created_at).getTime();
+      return (
+        (from === null || createdAt >= from) &&
+        (to === null || createdAt <= to) &&
+        (selectedAgentIds.length === 0 ||
+          selectedAgentIds.includes(deal.assigned_to ?? ''))
+      );
+    });
+  }, [deals, isOwner, dateFrom, dateTo, selectedAgentIds]);
 
   if (loading) {
     return (
@@ -420,6 +455,78 @@ export default function PipelinesPage() {
         </div>
       </div>
 
+      {isOwner && pipelines.length > 0 && (
+        <div className="border-border bg-card flex flex-wrap items-end gap-3 rounded-lg border p-3">
+          <div className="grid gap-1">
+            <Label htmlFor="deals-date-from" className="text-xs">
+              {t('createdFrom')}
+            </Label>
+            <Input
+              id="deals-date-from"
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-40"
+            />
+          </div>
+          <div className="grid gap-1">
+            <Label htmlFor="deals-date-to" className="text-xs">
+              {t('createdTo')}
+            </Label>
+            <Input
+              id="deals-date-to"
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-40"
+            />
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="border-border hover:bg-muted inline-flex h-8 items-center gap-2 rounded-lg border px-3 text-sm">
+              {selectedAgentIds.length === 0
+                ? t('allAgents')
+                : t('selectedAgents', { count: selectedAgentIds.length })}
+              <ChevronDown className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="max-h-64 w-56 overflow-y-auto"
+            >
+              {agents.map((agent) => (
+                <DropdownMenuCheckboxItem
+                  key={agent.id}
+                  checked={selectedAgentIds.includes(agent.id)}
+                  onCheckedChange={(checked) =>
+                    setSelectedAgentIds((current) =>
+                      checked
+                        ? [...current, agent.id]
+                        : current.filter((id) => id !== agent.id)
+                    )
+                  }
+                >
+                  {agent.full_name || agent.email}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {(dateFrom || dateTo || selectedAgentIds.length > 0) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDateFrom('');
+                setDateTo('');
+                setSelectedAgentIds([]);
+              }}
+            >
+              {t('clearFilters')}
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Board */}
       {pipelines.length === 0 ? (
         <div className="border-border flex flex-col items-center justify-center rounded-xl border border-dashed py-20">
@@ -442,10 +549,10 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={deals} />
+          <PipelineAnalytics stages={stages} deals={filteredDeals} />
           <PipelineBoard
             stages={stages}
-            deals={deals}
+            deals={filteredDeals}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
