@@ -37,6 +37,14 @@ export function resolveFallbackPolicy(
 ): FlowFallbackPolicy {
   if (!raw || typeof raw !== "object") return DEFAULT_FALLBACK_POLICY;
   const r = raw as Partial<FlowFallbackPolicy>;
+  const timeout = typeof r.on_timeout_hours === "number" && Number.isFinite(r.on_timeout_hours) && r.on_timeout_hours > 0
+    ? r.on_timeout_hours : DEFAULT_FALLBACK_POLICY.on_timeout_hours;
+  const followUp = r.follow_up;
+  const positiveInteger = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value > 0;
+  const validFollowUp = followUp && typeof followUp.message === 'string' && followUp.message.trim() && followUp.message.length <= 4096 &&
+    positiveInteger(followUp.first_delay_hours) && positiveInteger(followUp.interval_hours) &&
+    positiveInteger(followUp.max_attempts) && followUp.max_attempts <= 10 &&
+    followUp.first_delay_hours + (followUp.max_attempts - 1) * followUp.interval_hours < Math.min(timeout, 24);
   return {
     on_unknown_reply:
       r.on_unknown_reply === "handoff" ||
@@ -48,14 +56,12 @@ export function resolveFallbackPolicy(
       typeof r.max_reprompts === "number" && r.max_reprompts >= 0
         ? Math.floor(r.max_reprompts)
         : DEFAULT_FALLBACK_POLICY.max_reprompts,
-    on_timeout_hours:
-      typeof r.on_timeout_hours === "number" && r.on_timeout_hours > 0
-        ? r.on_timeout_hours
-        : DEFAULT_FALLBACK_POLICY.on_timeout_hours,
+    on_timeout_hours: timeout,
     on_exhaust:
       r.on_exhaust === "handoff" || r.on_exhaust === "end"
         ? r.on_exhaust
         : DEFAULT_FALLBACK_POLICY.on_exhaust,
+    follow_up: validFollowUp ? followUp : undefined,
   };
 }
 

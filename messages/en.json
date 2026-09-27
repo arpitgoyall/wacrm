@@ -933,6 +933,13 @@
       "backAria": "Back"
     },
     "builder": {
+      "followUpTitle": "Follow up when there is no reply",
+      "followUpOpenSettings": "Configure no-reply follow-ups",
+      "followUpHint": "Send reminders while the flow waits for a reply. The last reminder must be before the flow timeout and within 24 hours of the customer's message. Run the Flow cron at least hourly for accurate timing.",
+      "followUpFirstDelay": "First reminder after (hours)",
+      "followUpInterval": "Hours between reminders",
+      "followUpAttempts": "Maximum reminders",
+      "followUpMessage": "Reminder message",
       "steps": {
         "send_message": "Send Message",
         "send_media": "Send Image",

@@ -163,6 +163,73 @@ export function FlowBuilder() {
         t={t}
       />
 
+      <section className="border-border bg-card rounded-lg border p-4">
+        <label className="flex items-center gap-2 text-sm font-semibold">
+          <input
+            type="checkbox"
+            checked={Boolean(state.fallback_policy.follow_up)}
+            onChange={(event) => setState((s) => ({
+              ...s,
+              fallback_policy: {
+                ...s.fallback_policy,
+                follow_up: event.target.checked
+                  ? { message: '', first_delay_hours: 1, interval_hours: 1, max_attempts: 1 }
+                  : undefined,
+              },
+            }))}
+          />
+          {t('followUpTitle')}
+        </label>
+        {state.fallback_policy.follow_up && (
+          <div className="mt-3 space-y-3">
+            <p className="text-muted-foreground text-xs">{t('followUpHint')}</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {([
+                ['first_delay_hours', 'followUpFirstDelay'],
+                ['interval_hours', 'followUpInterval'],
+                ['max_attempts', 'followUpAttempts'],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="text-muted-foreground text-xs">
+                  {t(label)}
+                  <Input
+                    className="mt-1"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={state.fallback_policy.follow_up?.[key] ?? 1}
+                    onChange={(event) => setState((s) => ({
+                      ...s,
+                      fallback_policy: {
+                        ...s.fallback_policy,
+                        follow_up: {
+                          ...s.fallback_policy.follow_up!,
+                          [key]: Number(event.target.value),
+                        },
+                      },
+                    }))}
+                  />
+                </label>
+              ))}
+            </div>
+            <label className="text-muted-foreground block text-xs">
+              {t('followUpMessage')}
+              <textarea
+                className="border-input bg-background mt-1 w-full rounded-md border p-2 text-sm"
+                rows={3}
+                value={state.fallback_policy.follow_up.message}
+                onChange={(event) => setState((s) => ({
+                  ...s,
+                  fallback_policy: {
+                    ...s.fallback_policy,
+                    follow_up: { ...s.fallback_policy.follow_up!, message: event.target.value },
+                  },
+                }))}
+              />
+            </label>
+          </div>
+        )}
+      </section>
+
       <EntryPicker state={state} setState={setState} t={t} />
 
       <section className="flex flex-col gap-3">

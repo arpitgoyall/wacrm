@@ -31,6 +31,30 @@ describe("validateFlowForActivation — happy path", () => {
 });
 
 describe("validateFlowForActivation — flow-level", () => {
+  it("accepts configured no-reply reminders before the timeout", () => {
+    const issues = validateFlowForActivation({
+      ...validFlow,
+      fallback_policy: { on_timeout_hours: 24, follow_up: {
+        message: 'Checking in', first_delay_hours: 2,
+        interval_hours: 4, max_attempts: 3,
+      } },
+    }, validNodes);
+    expect(issues).toEqual([]);
+  });
+
+  it("rejects reminders scheduled after the timeout or WhatsApp window", () => {
+    const issues = validateFlowForActivation({
+      ...validFlow,
+      fallback_policy: { on_timeout_hours: 24, follow_up: {
+        message: 'Checking in', first_delay_hours: 12,
+        interval_hours: 12, max_attempts: 2,
+      } },
+    }, validNodes);
+    expect(issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'fallback_policy.follow_up' }),
+    ]));
+  });
+
   it("flags empty name", () => {
     expect(
       validateFlowForActivation({ ...validFlow, name: "" }, validNodes),

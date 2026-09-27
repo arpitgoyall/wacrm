@@ -51,7 +51,7 @@ import {
 } from "@/lib/flows/validate";
 import { useTranslations } from "next-intl";
 import { unlinkNodeReferences } from "@/lib/flows/edges";
-import type { FlowNodeRow, FlowRow } from "@/lib/flows/types";
+import type { FlowFallbackPolicy, FlowNodeRow, FlowRow } from "@/lib/flows/types";
 import { NODE_META, slugify, type BuilderNode, type NodeType } from "./shared";
 
 // ============================================================
@@ -65,6 +65,7 @@ export interface BuilderState {
   trigger_config: Record<string, unknown>;
   entry_node_id: string | null;
   status: FlowRow["status"];
+  fallback_policy: FlowFallbackPolicy;
   nodes: BuilderNode[];
 }
 
@@ -245,6 +246,7 @@ export function FlowEditorProvider({
     trigger_config: initialFlow.trigger_config as Record<string, unknown>,
     entry_node_id: initialFlow.entry_node_id,
     status: initialFlow.status,
+    fallback_policy: initialFlow.fallback_policy,
     nodes: initialNodes.map((n) => ({
       node_key: n.node_key,
       node_type: n.node_type as NodeType,
@@ -316,6 +318,7 @@ export function FlowEditorProvider({
           trigger_type: state.trigger_type,
           trigger_config: state.trigger_config,
           entry_node_id: state.entry_node_id,
+          fallback_policy: state.fallback_policy as unknown as Record<string, unknown>,
         },
         state.nodes,
       ),
@@ -330,6 +333,9 @@ export function FlowEditorProvider({
   const save = useCallback(async () => {
     setSaving(true);
     try {
+      if (state.status === 'active' && !canActivate) {
+        throw new Error('Fix the flow validation issues before saving an active flow.');
+      }
       const res = await fetch(`/api/flows/${initialFlow.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -340,6 +346,7 @@ export function FlowEditorProvider({
           trigger_config: state.trigger_config,
           entry_node_id: state.entry_node_id,
           nodes: state.nodes,
+          fallback_policy: state.fallback_policy,
         }),
       });
       if (!res.ok) {
@@ -354,7 +361,7 @@ export function FlowEditorProvider({
     } finally {
       setSaving(false);
     }
-  }, [initialFlow.id, state]);
+  }, [initialFlow.id, state, canActivate, t]);
 
   // ---- Activate / Pause / Archive ----
   const setStatus = useCallback(

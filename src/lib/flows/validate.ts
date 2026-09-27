@@ -40,6 +40,7 @@ interface FlowInput {
   trigger_type: "keyword" | "first_inbound_message" | "manual";
   trigger_config: Record<string, unknown>;
   entry_node_id: string | null;
+  fallback_policy?: Record<string, unknown>;
 }
 
 interface NodeInput {
@@ -66,6 +67,31 @@ export function validateFlowForActivation(
 
   // ---- trigger ----
   issues.push(...validateTrigger(flow.trigger_type, flow.trigger_config));
+
+  const policy = flow.fallback_policy;
+  const followUp = policy?.follow_up;
+  if (followUp !== undefined && followUp !== null) {
+    const cfg = followUp as Record<string, unknown>;
+    const first = cfg.first_delay_hours;
+    const interval = cfg.interval_hours;
+    const attempts = cfg.max_attempts;
+    const timeout = policy?.on_timeout_hours;
+    const validHours = (value: unknown) =>
+      typeof value === 'number' && Number.isInteger(value) && value > 0;
+    if (
+      typeof cfg.message !== 'string' || !cfg.message.trim() || cfg.message.length > 4096 ||
+      !validHours(first) || !validHours(interval) ||
+      !validHours(attempts) || (attempts as number) > 10 ||
+      !validHours(timeout) ||
+      (first as number) + ((attempts as number) - 1) * (interval as number) >=
+        Math.min(timeout as number, 24)
+    ) {
+      issues.push({
+        severity: 'error', scope: 'flow', field: 'fallback_policy.follow_up',
+        message: 'Add a reminder message and positive whole-hour timings (up to 10 attempts). The final reminder must occur before the flow timeout and within 24 hours.',
+      });
+    }
+  }
 
   // ---- graph integrity ----
   if (!flow.entry_node_id) {

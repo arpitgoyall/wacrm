@@ -1073,6 +1073,7 @@ async function advanceCurrentNodeKey(
     .update({
       current_node_key: newKey,
       last_advanced_at: new Date().toISOString(),
+      follow_up_attempts: 0,
     })
     .eq("id", runId)
     .eq("status", "active");

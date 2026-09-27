@@ -122,6 +122,15 @@ export function FlowEditorShell({ initialFlow, initialNodes }: Props) {
                 label={t("listView")}
               />
             </div>
+            {effectiveView === "canvas" && (
+              <button
+                type="button"
+                onClick={() => choose("list")}
+                className="text-muted-foreground hover:text-foreground text-xs underline"
+              >
+                {t("followUpOpenSettings")}
+              </button>
+            )}
             <div className="ml-auto hidden flex-wrap items-center gap-x-3.5 gap-y-1.5 lg:flex">
               {LEGEND_TYPES.map((t_type) => (
                 <span

@@ -353,6 +353,13 @@ export interface FlowFallbackPolicy {
   on_timeout_hours: number;
   /** What to do once max_reprompts has been hit. */
   on_exhaust: "handoff" | "end";
+  /** Optional reminders while a run waits for a customer reply. */
+  follow_up?: {
+    message: string;
+    first_delay_hours: number;
+    interval_hours: number;
+    max_attempts: number;
+  };
 }
 
 export const DEFAULT_FALLBACK_POLICY: FlowFallbackPolicy = {

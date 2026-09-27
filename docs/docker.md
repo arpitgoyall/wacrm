@@ -74,7 +74,8 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   `x-cron-secret` header (`AUTOMATION_CRON_SECRET`, see
   `.env.local.example`). Both return 503 until that variable is set.
   Run `/api/automations/cron` every minute or two; `/api/flows/cron`
-  every 10-15 minutes is plenty.
+  every 10-15 minutes is plenty. Configured no-reply follow-ups also
+  use the Flow cron; run it at least hourly for accurate reminder timing.
 - On **Vercel**, `vercel.json` `crons` (already checked in) triggers
   both endpoints — set `CRON_SECRET` in the project env and Vercel
   sends it as `Authorization: Bearer` automatically. The checked-in
@@ -82,8 +83,9 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   Vercel **Hobby rejects any sub-daily cron expression at deploy
   time**. Daily is fine for `deal_stage_changed` → Meta conversions
   (attribution windows are days) but means automation Wait steps and
-  flow timeouts only advance once a day. For minute-level cadence,
-  either upgrade to **Pro** and change the schedules to `* * * * *`,
+  flow timeouts only advance once a day. Configured no-reply follow-ups
+  need a more frequent schedule: either upgrade to **Pro** and change
+  the Flow schedule to `0 * * * *` (or more often),
   or leave Vercel's cron daily and additionally point an external
   every-few-minutes pinger at the same URLs with the `x-cron-secret`
   header. The `/api/automations/cron` handler drains its full backlog

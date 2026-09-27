@@ -56,6 +56,15 @@ describe("resolveFallbackPolicy", () => {
       DEFAULT_FALLBACK_POLICY,
     );
   });
+
+  it("keeps valid reminders and drops schedules outside the reply window", () => {
+    const follow_up = {
+      message: 'Checking in', first_delay_hours: 2,
+      interval_hours: 4, max_attempts: 3,
+    };
+    expect(resolveFallbackPolicy({ follow_up }).follow_up).toEqual(follow_up);
+    expect(resolveFallbackPolicy({ follow_up: { ...follow_up, max_attempts: 7 } }).follow_up).toBeUndefined();
+  });
 });
 
 const POLICY_REPROMPT_2_HANDOFF: FlowFallbackPolicy = {
