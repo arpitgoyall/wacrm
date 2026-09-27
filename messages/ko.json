@@ -933,13 +933,6 @@
       "backAria": "뒤로"
     },
     "builder": {
-      "followUpTitle": "응답이 없으면 후속 메시지 보내기",
-      "followUpOpenSettings": "무응답 후속 메시지 설정",
-      "followUpHint": "응답을 기다리는 동안 알림을 보냅니다. 마지막 알림은 플로우 제한 시간과 고객의 마지막 메시지로부터 24시간 이내여야 합니다. 정확한 시간을 위해 플로우 크론을 최소 매시간 실행하세요.",
-      "followUpFirstDelay": "첫 알림까지 (시간)",
-      "followUpInterval": "알림 간격 (시간)",
-      "followUpAttempts": "최대 알림 횟수",
-      "followUpMessage": "알림 메시지",
       "steps": {
         "send_message": "메시지 보내기",
         "send_media": "이미지 보내기",
@@ -1187,6 +1180,13 @@
     },
     "builder": {
       "triggerTitle": "트리거",
+      "followUpTitle": "응답이 없으면 후속 메시지 보내기",
+      "followUpOpenSettings": "무응답 후속 메시지 설정",
+      "followUpHint": "응답을 기다리는 동안 알림을 보냅니다. 마지막 알림은 플로우 제한 시간과 고객의 마지막 메시지로부터 24시간 이내여야 합니다. 정확한 시간을 위해 플로우 크론을 최소 매시간 실행하세요.",
+      "followUpFirstDelay": "첫 알림까지 (시간)",
+      "followUpInterval": "알림 간격 (시간)",
+      "followUpAttempts": "최대 알림 횟수",
+      "followUpMessage": "알림 메시지",
       "whenLabel": "조건…",
       "triggerKeywordTitle": "메시지에 키워드가 포함될 때",
       "triggerFirstInboundTitle": "고객의 첫 수신 메시지",
