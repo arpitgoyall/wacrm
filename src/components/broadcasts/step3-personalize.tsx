@@ -20,6 +20,7 @@ type VariableType = 'static' | 'field' | 'custom_field' | 'deal' | 'csv_column';
 interface VariableMapping {
   type: VariableType;
   value: string;
+  fallback?: string;
 }
 
 interface Step3Props {
@@ -214,7 +215,7 @@ export function Step3Personalize({
     for (const placeholder of placeholders) {
       const key = placeholder.replace(/^\{\{|\}\}$/g, '');
       const mapping = variables[key];
-      let replacement = placeholder;
+      let replacement = '';
 
       if (mapping) {
         if (mapping.type === 'static' && mapping.value) {
@@ -226,16 +227,17 @@ export function Step3Personalize({
             email: contact.email,
             company: contact.company,
           };
-          replacement = fieldMap[mapping.value] ?? placeholder;
+          replacement = fieldMap[mapping.value] ?? '';
         } else if (mapping.type === 'custom_field' && mapping.value) {
-          replacement = customValues.get(mapping.value) || placeholder;
+          replacement = customValues.get(mapping.value) ?? '';
         } else if (mapping.type === 'deal' && mapping.value) {
-          replacement = String(firstDeal?.[mapping.value] ?? placeholder);
+          replacement = String(firstDeal?.[mapping.value] ?? '');
         } else if (mapping.type === 'csv_column' && mapping.value) {
-          replacement = audience.csvContacts?.[0]?.columns?.[mapping.value] || placeholder;
+          replacement = audience.csvContacts?.[0]?.columns?.[mapping.value] ?? '';
         }
+        if (mapping.type !== 'static' && !replacement.trim()) replacement = mapping.fallback ?? '';
       }
-      text = text.replaceAll(placeholder, replacement);
+      text = text.replaceAll(placeholder, replacement || placeholder);
     }
     return text;
   }, [
@@ -420,6 +422,20 @@ export function Step3Personalize({
                     )}
                   </div>
                 </div>
+                {mapping.type !== 'static' && (
+                  <div className="mt-3">
+                    <label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor={`fallback-${key}`}>
+                      Fallback value
+                    </label>
+                    <Input
+                      id={`fallback-${key}`}
+                      value={mapping.fallback ?? ''}
+                      onChange={(e) => updateVariable(key, { fallback: e.target.value })}
+                      placeholder="Used when this field is empty"
+                      className="border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                    />
+                  </div>
+                )}
               </div>
             );
           })}

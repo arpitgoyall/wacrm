@@ -12,9 +12,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
-import { ArrowLeft, Send, Loader2, Users, Save } from 'lucide-react';
+import { ArrowLeft, Send, Loader2, Users, Save, CalendarClock } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 interface AudienceConfig {
@@ -49,10 +48,10 @@ export function Step4ScheduleSend({
 }: Step4Props) {
   const t = useTranslations('Broadcasts.wizard');
   const [showConfirm, setShowConfirm] = useState(false);
-  const [sendMode, setSendMode] = useState<'now' | 'later'>('now');
+  const [confirmMode, setConfirmMode] = useState<'now' | 'later'>('now');
   const [scheduleValue, setScheduleValue] = useState('');
   const scheduledAt = scheduleValue ? new Date(scheduleValue) : null;
-  const invalidSchedule = sendMode === 'later' && (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now());
+  const invalidSchedule = !scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now();
   const [estimatedReach, setEstimatedReach] = useState<number>(0);
   const [loadingReach, setLoadingReach] = useState(true);
 
@@ -131,12 +130,10 @@ export function Step4ScheduleSend({
       </div>
 
       <div className="border-border bg-card/50 space-y-3 rounded-xl border p-4">
-        <p className="text-foreground text-sm font-medium">Send time</p>
-        <div className="flex gap-4 text-sm">
-          <label><input type="radio" checked={sendMode === 'now'} onChange={() => setSendMode('now')} /> Send now</label>
-          <label><input type="radio" checked={sendMode === 'later'} onChange={() => setSendMode('later')} /> Schedule for later</label>
-        </div>
-        {sendMode === 'later' && <><Input type="datetime-local" value={scheduleValue} onChange={(e) => setScheduleValue(e.target.value)} min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} /><p className="text-muted-foreground text-xs">Time uses your device’s local timezone.</p>{invalidSchedule && <p className="text-amber-300 text-xs">Choose a future date and time.</p>}</>}
+        <label htmlFor="broadcast-schedule" className="text-foreground block text-sm font-medium">Schedule for later</label>
+        <Input id="broadcast-schedule" type="datetime-local" value={scheduleValue} onChange={(e) => setScheduleValue(e.target.value)} min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} className="border-border bg-muted text-foreground" />
+        <p className="text-muted-foreground text-xs">Choose a date and time in your local timezone, then select Schedule broadcast below.</p>
+        {scheduleValue && invalidSchedule && <p className="text-amber-300 text-xs">Choose a future date and time.</p>}
       </div>
 
       {/* Broadcast Name */}
@@ -239,25 +236,22 @@ export function Step4ScheduleSend({
             </Button>
           )}
 
-          <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
-            <DialogTrigger
-              render={
-                <Button
-                  disabled={!name.trim() || isProcessing || invalidSchedule}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                />
-              }
-            >
+          <Button disabled={!name.trim() || isProcessing} onClick={() => { setConfirmMode('now'); setShowConfirm(true); }} className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
               <Send className="h-4 w-4" />
-              {sendMode === 'later' ? 'Schedule broadcast' : t('scheduleSend.sendNow')}
-            </DialogTrigger>
+              {t('scheduleSend.sendNow')}
+          </Button>
+          <Button disabled={!name.trim() || isProcessing || invalidSchedule} onClick={() => { setConfirmMode('later'); setShowConfirm(true); }} variant="outline" className="border-primary text-primary disabled:opacity-50">
+            <CalendarClock className="h-4 w-4" />
+            Schedule broadcast
+          </Button>
+          <Dialog open={showConfirm} onOpenChange={setShowConfirm}>
             <DialogContent className="border-border bg-popover sm:max-w-md">
               <DialogHeader>
                 <DialogTitle className="text-popover-foreground">
                   Confirm Broadcast
                 </DialogTitle>
                 <DialogDescription className="text-muted-foreground">
-                  You are about to {sendMode === 'later' ? 'schedule' : 'send'} this broadcast for{' '}
+                  You are about to {confirmMode === 'later' ? 'schedule' : 'send'} this broadcast for{' '}
                   <span className="text-popover-foreground font-medium">
                     {estimatedReach.toLocaleString()}
                   </span>{' '}
@@ -265,7 +259,7 @@ export function Step4ScheduleSend({
                   <span className="text-popover-foreground font-medium">
                     {template.name}
                   </span>{' '}
-                  template{sendMode === 'later' && scheduledAt ? ` on ${scheduledAt.toLocaleString()}` : ''}.
+                  template{confirmMode === 'later' && scheduledAt ? ` on ${scheduledAt.toLocaleString()}` : ''}.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -279,12 +273,12 @@ export function Step4ScheduleSend({
                 <Button
                   onClick={() => {
                     setShowConfirm(false);
-                    onSend(sendMode === 'later' ? scheduledAt!.toISOString() : undefined);
+                    onSend(confirmMode === 'later' ? scheduledAt!.toISOString() : undefined);
                   }}
                   className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   <Send className="h-4 w-4" />
-                  {sendMode === 'later' ? 'Schedule broadcast' : t('scheduleSend.sendNow')}
+                  {confirmMode === 'later' ? 'Schedule broadcast' : t('scheduleSend.sendNow')}
                 </Button>
               </DialogFooter>
             </DialogContent>

@@ -33,12 +33,11 @@ export interface AudienceConfig {
  * contact_custom_values.value row keyed by the custom_fields.id stored
  * in `value`.
  */
-export type VariableMapping =
-  | { type: 'static'; value: string }
-  | { type: 'field'; value: string }
-  | { type: 'custom_field'; value: string }
-  | { type: 'deal'; value: string }
-  | { type: 'csv_column'; value: string };
+export type VariableMapping = {
+  type: 'static' | 'field' | 'custom_field' | 'deal' | 'csv_column';
+  value: string;
+  fallback?: string;
+};
 
 interface BroadcastPayload {
   name: string;
@@ -116,6 +115,8 @@ export function resolveVariables(
     const v = variables[key];
     if (v.type === 'static') return v.value;
 
+    let resolved = '';
+
     if (v.type === 'field') {
       const fieldMap: Record<string, string | undefined> = {
         name: contact.name,
@@ -123,13 +124,15 @@ export function resolveVariables(
         email: contact.email,
         company: contact.company,
       };
-      return fieldMap[v.value] ?? '';
+      resolved = fieldMap[v.value] ?? '';
+    } else if (v.type === 'deal') {
+      resolved = String(deal?.[v.value] ?? '');
+    } else if (v.type === 'csv_column') {
+      resolved = csvColumns?.[v.value] ?? '';
+    } else {
+      resolved = customValues?.get(v.value) ?? '';
     }
-    if (v.type === 'deal') return String(deal?.[v.value] ?? '');
-    if (v.type === 'csv_column') return csvColumns?.[v.value] ?? '';
-
-    // custom_field
-    return customValues?.get(v.value) ?? '';
+    return resolved.trim() ? resolved : (v.fallback ?? '');
   });
 }
 
