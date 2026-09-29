@@ -34,7 +34,8 @@ interface AudienceConfig {
   tagIds?: string[];
   stageIds?: string[];
   customField?: CustomFieldFilter;
-  csvContacts?: { phone: string; name?: string }[];
+  csvContacts?: { phone: string; name?: string; columns?: Record<string, string> }[];
+  csvColumns?: string[];
   excludeTagIds?: string[];
 }
 
@@ -306,7 +307,7 @@ export function Step2SelectAudience({
     }
 
     setPickedCsvName(selected.name);
-    onUpdate({ ...audience, csvContacts: result.contacts });
+    onUpdate({ ...audience, csvContacts: result.contacts, csvColumns: result.columns });
   }
 
   function toggleTag(tagId: string) {

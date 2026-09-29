@@ -361,6 +361,7 @@ export default function BroadcastDetailPage() {
               <span>
                 {t('createdAt', { date: new Date(broadcast.created_at).toLocaleDateString() })}
               </span>
+              {broadcast.status === 'scheduled' && broadcast.scheduled_at && <span>Scheduled for {new Date(broadcast.scheduled_at).toLocaleString()}</span>}
             </div>
           </div>
         </div>
@@ -411,7 +412,7 @@ export default function BroadcastDetailPage() {
 
       {/* Resume / retry (issue #472). Only rendered when there is
           actually something outstanding. */}
-      {(pendingCount > 0 || retryableCount > 0) && (
+      {broadcast.status !== 'scheduled' && (pendingCount > 0 || retryableCount > 0) && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-card p-4">
           <div className="text-sm">
             <p className="font-medium text-foreground">

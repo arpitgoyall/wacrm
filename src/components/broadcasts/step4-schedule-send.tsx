@@ -29,7 +29,7 @@ interface Step4Props {
   onNameChange: (name: string) => void;
   template: MessageTemplate;
   audience: AudienceConfig;
-  onSend: () => void;
+  onSend: (scheduledAt?: string) => void;
   onSaveDraft?: () => void;
   onBack: () => void;
   isProcessing: boolean;
@@ -49,6 +49,10 @@ export function Step4ScheduleSend({
 }: Step4Props) {
   const t = useTranslations('Broadcasts.wizard');
   const [showConfirm, setShowConfirm] = useState(false);
+  const [sendMode, setSendMode] = useState<'now' | 'later'>('now');
+  const [scheduleValue, setScheduleValue] = useState('');
+  const scheduledAt = scheduleValue ? new Date(scheduleValue) : null;
+  const invalidSchedule = sendMode === 'later' && (!scheduledAt || Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now());
   const [estimatedReach, setEstimatedReach] = useState<number>(0);
   const [loadingReach, setLoadingReach] = useState(true);
 
@@ -124,6 +128,15 @@ export function Step4ScheduleSend({
         <p className="text-muted-foreground mt-1 text-sm">
           {t('scheduleSend.subtitle')}
         </p>
+      </div>
+
+      <div className="border-border bg-card/50 space-y-3 rounded-xl border p-4">
+        <p className="text-foreground text-sm font-medium">Send time</p>
+        <div className="flex gap-4 text-sm">
+          <label><input type="radio" checked={sendMode === 'now'} onChange={() => setSendMode('now')} /> Send now</label>
+          <label><input type="radio" checked={sendMode === 'later'} onChange={() => setSendMode('later')} /> Schedule for later</label>
+        </div>
+        {sendMode === 'later' && <><Input type="datetime-local" value={scheduleValue} onChange={(e) => setScheduleValue(e.target.value)} min={new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} /><p className="text-muted-foreground text-xs">Time uses your device’s local timezone.</p>{invalidSchedule && <p className="text-amber-300 text-xs">Choose a future date and time.</p>}</>}
       </div>
 
       {/* Broadcast Name */}
@@ -230,13 +243,13 @@ export function Step4ScheduleSend({
             <DialogTrigger
               render={
                 <Button
-                  disabled={!name.trim() || isProcessing}
+                  disabled={!name.trim() || isProcessing || invalidSchedule}
                   className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 />
               }
             >
               <Send className="h-4 w-4" />
-              {t('scheduleSend.sendNow')}
+              {sendMode === 'later' ? 'Schedule broadcast' : t('scheduleSend.sendNow')}
             </DialogTrigger>
             <DialogContent className="border-border bg-popover sm:max-w-md">
               <DialogHeader>
@@ -244,7 +257,7 @@ export function Step4ScheduleSend({
                   Confirm Broadcast
                 </DialogTitle>
                 <DialogDescription className="text-muted-foreground">
-                  You are about to send this broadcast to{' '}
+                  You are about to {sendMode === 'later' ? 'schedule' : 'send'} this broadcast for{' '}
                   <span className="text-popover-foreground font-medium">
                     {estimatedReach.toLocaleString()}
                   </span>{' '}
@@ -252,7 +265,7 @@ export function Step4ScheduleSend({
                   <span className="text-popover-foreground font-medium">
                     {template.name}
                   </span>{' '}
-                  template. This action cannot be undone.
+                  template{sendMode === 'later' && scheduledAt ? ` on ${scheduledAt.toLocaleString()}` : ''}.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -266,12 +279,12 @@ export function Step4ScheduleSend({
                 <Button
                   onClick={() => {
                     setShowConfirm(false);
-                    onSend();
+                    onSend(sendMode === 'later' ? scheduledAt!.toISOString() : undefined);
                   }}
                   className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   <Send className="h-4 w-4" />
-                  {t('scheduleSend.sendNow')}
+                  {sendMode === 'later' ? 'Schedule broadcast' : t('scheduleSend.sendNow')}
                 </Button>
               </DialogFooter>
             </DialogContent>

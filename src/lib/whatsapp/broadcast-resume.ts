@@ -150,7 +150,7 @@ export async function planBroadcastResume(
 ): Promise<ResumePlan> {
   const { data: broadcast, error: bcError } = await db
     .from('broadcasts')
-    .select('id, user_id, template_name, template_language')
+    .select('id, user_id, template_name, template_language, audience_filter')
     .eq('id', broadcastId)
     .eq('account_id', accountId)
     .maybeSingle();
@@ -248,6 +248,9 @@ export async function planBroadcastResume(
     phoneNumberId: config.phone_number_id,
     accessToken: decrypt(config.access_token),
     templateRow: resolvedTemplate.row,
+    headerMediaUrl: typeof (broadcast.audience_filter as Record<string, unknown> | null)?.headerMediaUrl === 'string'
+      ? (broadcast.audience_filter as Record<string, string>).headerMediaUrl
+      : undefined,
     planned: slice.map((row) => ({
       recipientRowId: row.id,
       contactId: row.contact_id,

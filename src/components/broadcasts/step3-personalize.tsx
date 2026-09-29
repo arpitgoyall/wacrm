@@ -15,7 +15,7 @@ import {
 import { ArrowLeft, ArrowRight, Eye, ImageIcon, Loader2 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-type VariableType = 'static' | 'field' | 'custom_field';
+type VariableType = 'static' | 'field' | 'custom_field' | 'deal' | 'csv_column';
 
 interface VariableMapping {
   type: VariableType;
@@ -24,6 +24,7 @@ interface VariableMapping {
 
 interface Step3Props {
   template: MessageTemplate;
+  audience: { type: string; stageIds?: string[]; csvColumns?: string[]; csvContacts?: { columns?: Record<string, string> }[] };
   variables: Record<string, VariableMapping>;
   onUpdate: (variables: Record<string, VariableMapping>) => void;
   /** Media URL for an IMAGE/VIDEO/DOCUMENT header, when the template has one. */
@@ -69,6 +70,7 @@ const SAMPLE_CONTACT: Contact = {
 
 export function Step3Personalize({
   template,
+  audience,
   variables,
   onUpdate,
   headerMediaUrl,
@@ -84,6 +86,7 @@ export function Step3Personalize({
     Map<string, string>
   >(new Map());
   const [loadingPreview, setLoadingPreview] = useState(true);
+  const [firstDeal, setFirstDeal] = useState<Record<string, unknown> | null>(null);
 
   // Load user's custom fields + a representative contact for the
   // live preview. Fall back to sample data if no contacts exist yet.
@@ -107,6 +110,11 @@ export function Step3Personalize({
 
       const contact = contactRes.data ?? null;
       setFirstContact(contact);
+      if (audience.type === 'stages') {
+        const query = supabase.from('deals').select('*').order('created_at', { ascending: false }).limit(1);
+        const { data: deal } = await (audience.stageIds?.length ? query.in('stage_id', audience.stageIds) : query).maybeSingle();
+        if (!cancelled) setFirstDeal(deal);
+      }
 
       if (contact) {
         const { data: customVals } = await supabase
@@ -126,7 +134,7 @@ export function Step3Personalize({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [audience.type, audience.stageIds]);
 
   const placeholders = useMemo(() => {
     const matches = template.body_text.match(/\{\{(\d+)\}\}/g);
@@ -174,10 +182,15 @@ export function Step3Personalize({
       const mapping = variables[key];
       if (!mapping || !mapping.value?.trim()) {
         missing.push(placeholder);
+      } else if ((audience.type === 'csv' && mapping.type !== 'static' && mapping.type !== 'csv_column') ||
+        (audience.type !== 'csv' && mapping.type === 'csv_column') ||
+        (audience.type !== 'stages' && mapping.type === 'deal') ||
+        (mapping.type === 'csv_column' && !audience.csvColumns?.includes(mapping.value))) {
+        missing.push(placeholder);
       }
     }
     return missing;
-  }, [placeholders, variables]);
+  }, [placeholders, variables, audience.type, audience.csvColumns]);
 
   function updateVariable(key: string, patch: Partial<VariableMapping>) {
     const current = variables[key] ?? { type: 'static' as VariableType, value: '' };
@@ -216,6 +229,10 @@ export function Step3Personalize({
           replacement = fieldMap[mapping.value] ?? placeholder;
         } else if (mapping.type === 'custom_field' && mapping.value) {
           replacement = customValues.get(mapping.value) || placeholder;
+        } else if (mapping.type === 'deal' && mapping.value) {
+          replacement = String(firstDeal?.[mapping.value] ?? placeholder);
+        } else if (mapping.type === 'csv_column' && mapping.value) {
+          replacement = audience.csvContacts?.[0]?.columns?.[mapping.value] || placeholder;
         }
       }
       text = text.replaceAll(placeholder, replacement);
@@ -227,6 +244,8 @@ export function Step3Personalize({
     placeholders,
     firstContact,
     firstContactCustomValues,
+    firstDeal,
+    audience.csvContacts,
   ]);
 
   const previewLabel = firstContact
@@ -326,10 +345,10 @@ export function Step3Personalize({
                       </SelectTrigger>
                       <SelectContent className="border-border bg-popover">
                         <SelectItem value="static">{t('personalize.typeStatic')}</SelectItem>
-                        <SelectItem value="field">{t('personalize.typeContact')}</SelectItem>
-                        <SelectItem value="custom_field">
-                          {t('personalize.typeCustom')}
-                        </SelectItem>
+                        {audience.type !== 'csv' && <SelectItem value="field">{t('personalize.typeContact')}</SelectItem>}
+                        {audience.type !== 'csv' && <SelectItem value="custom_field">{t('personalize.typeCustom')}</SelectItem>}
+                        {audience.type === 'stages' && <SelectItem value="deal">Deal field</SelectItem>}
+                        {audience.type === 'csv' && <SelectItem value="csv_column">Sheet column</SelectItem>}
                       </SelectContent>
                     </Select>
                   </div>
@@ -363,6 +382,13 @@ export function Step3Personalize({
                               {t(`personalize.fieldMap.${field.labelKey}`)}
                             </SelectItem>
                           ))}
+                        </SelectContent>
+                      </Select>
+                    ) : mapping.type === 'deal' || mapping.type === 'csv_column' ? (
+                      <Select value={mapping.value || undefined} onValueChange={(val) => updateVariable(key, { value: val || '' })}>
+                        <SelectTrigger className="w-full border-border bg-muted text-foreground"><SelectValue placeholder="Select field" /></SelectTrigger>
+                        <SelectContent className="border-border bg-popover">
+                          {(mapping.type === 'deal' ? ['title', 'value', 'currency', 'status', 'expected_close_date', 'notes'] : audience.csvColumns ?? []).map((field) => <SelectItem key={field} value={field}>{field}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     ) : (

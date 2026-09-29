@@ -114,7 +114,7 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
 }
 
 /** Simple CSV line parse (handles quoted fields). */
-function parseCsvLine(line: string): string[] {
+export function parseCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = '';
   let inQuotes = false;

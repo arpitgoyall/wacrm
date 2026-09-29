@@ -60,6 +60,10 @@ export async function POST(
     if (!limit.success) return rateLimitResponse(limit);
 
     const { id } = await params;
+    const { data: scheduled } = await supabase.from('broadcasts').select('status').eq('id', id).eq('account_id', accountId).maybeSingle();
+    if (scheduled?.status === 'scheduled') {
+      return NextResponse.json({ error: 'This broadcast is scheduled and will send at its scheduled time.' }, { status: 409 });
+    }
     const body = await request.json().catch(() => ({}));
     const scope: ResumeScope = RESUME_SCOPES.includes(body?.scope)
       ? body.scope

@@ -39,16 +39,17 @@ export default function NewBroadcastPage() {
       operator: 'is' | 'is_not' | 'contains';
       value: string;
     };
-    csvContacts?: { phone: string; name?: string }[];
+    csvContacts?: { phone: string; name?: string; columns?: Record<string, string> }[];
+    csvColumns?: string[];
     excludeTagIds?: string[];
   }>({ type: 'all' });
   const [variables, setVariables] = useState<
-    Record<string, { type: 'static' | 'field' | 'custom_field'; value: string }>
+    Record<string, { type: 'static' | 'field' | 'custom_field' | 'deal' | 'csv_column'; value: string }>
   >({});
   const [headerMediaUrl, setHeaderMediaUrl] = useState('');
   const [name, setName] = useState('');
 
-  async function handleSend() {
+  async function handleSend(scheduledAt?: string) {
     if (!template) return;
 
     try {
@@ -65,6 +66,7 @@ export default function NewBroadcastPage() {
         },
         variables,
         headerMediaUrl,
+        scheduledAt,
       });
       router.push(`/broadcasts/${broadcastId}`);
     } catch (err) {
@@ -213,6 +215,7 @@ export default function NewBroadcastPage() {
           {currentStep === 2 && template && (
             <Step3Personalize
               template={template}
+              audience={audience}
               variables={variables}
               onUpdate={setVariables}
               headerMediaUrl={headerMediaUrl}

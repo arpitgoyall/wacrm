@@ -20,12 +20,13 @@
  */
 
 import { dedupeByPhone } from '@/lib/contacts/dedupe';
-import { parseContactCsv } from '@/lib/contacts/parse-contact-csv';
+import { parseContactCsv, parseCsvLine } from '@/lib/contacts/parse-contact-csv';
 
 /** The shape the wizard hands to `createAndSendBroadcast`. */
 export interface BroadcastCsvContact {
   phone: string;
   name?: string;
+  columns?: Record<string, string>;
 }
 
 export type BroadcastCsvError =
@@ -38,6 +39,7 @@ export type ParseBroadcastCsvResult =
   | {
       ok: true;
       contacts: BroadcastCsvContact[];
+      columns: string[];
       /** Rows dropped as same-number repeats (or as blank numbers). */
       duplicates: number;
     }
@@ -51,13 +53,19 @@ export function parseBroadcastCsv(text: string): ParseBroadcastCsvResult {
   const { unique, duplicates } = dedupeByPhone(rows);
   if (unique.length === 0) return { ok: false, error: 'no_valid_rows' };
 
+  const columns = parseCsvLine(text.split(/\r?\n/, 1)[0]).map((h) => h.trim()).filter(Boolean);
+  const originalRows = text.trim().split(/\r?\n/).slice(1);
+  const byPhone = new Map<string, Record<string, string>>();
+  for (const line of originalRows) {
+    const values = parseCsvLine(line);
+    const record = Object.fromEntries(columns.map((column, index) => [column, values[index] ?? '']));
+    const phone = record[columns.find((column) => column.toLowerCase() === 'phone') ?? 'phone'];
+    if (phone) byPhone.set(phone, record);
+  }
   return {
     ok: true,
-    // Drop email/company/tags: the broadcast audience only addresses
-    // people, and `name` is the sole field template variables can map.
-    contacts: unique.map(({ phone, name }) =>
-      name ? { phone, name } : { phone }
-    ),
+    columns: columns.filter((column) => column.toLowerCase() !== 'phone'),
+    contacts: unique.map(({ phone, name }) => ({ phone, ...(name ? { name } : {}), columns: byPhone.get(phone) ?? {} })),
     duplicates,
   };
 }

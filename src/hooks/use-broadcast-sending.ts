@@ -21,7 +21,7 @@ export interface AudienceConfig {
   /** Contacts with a deal in any of these pipeline stages are included. */
   stageIds?: string[];
   customField?: CustomFieldFilter;
-  csvContacts?: { phone: string; name?: string }[];
+  csvContacts?: { phone: string; name?: string; columns?: Record<string, string> }[];
   /** Contacts carrying any of these tags are subtracted from the result. */
   excludeTagIds?: string[];
 }
@@ -36,7 +36,9 @@ export interface AudienceConfig {
 export type VariableMapping =
   | { type: 'static'; value: string }
   | { type: 'field'; value: string }
-  | { type: 'custom_field'; value: string };
+  | { type: 'custom_field'; value: string }
+  | { type: 'deal'; value: string }
+  | { type: 'csv_column'; value: string };
 
 interface BroadcastPayload {
   name: string;
@@ -50,6 +52,7 @@ interface BroadcastPayload {
    * falls back to the template's stored URL only when this is empty.
    */
   headerMediaUrl?: string;
+  scheduledAt?: string;
 }
 
 interface UseBroadcastSendingReturn {
@@ -96,7 +99,9 @@ type CustomValueIndex = Map<string, Map<string, string>>;
 export function resolveVariables(
   variables: Record<string, VariableMapping>,
   contact: Contact,
-  customValues?: Map<string, string>
+  customValues?: Map<string, string>,
+  deal?: Record<string, unknown>,
+  csvColumns?: Record<string, string>
 ): string[] {
   // Keys are typically "1","2",... — numeric-aware sort keeps
   // {{1}} before {{10}}.
@@ -120,6 +125,8 @@ export function resolveVariables(
       };
       return fieldMap[v.value] ?? '';
     }
+    if (v.type === 'deal') return String(deal?.[v.value] ?? '');
+    if (v.type === 'csv_column') return csvColumns?.[v.value] ?? '';
 
     // custom_field
     return customValues?.get(v.value) ?? '';
@@ -406,6 +413,10 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       // ── Step 1: Resolve audience contacts ─────────────────────────
       setProgress(5);
       const contacts = await resolveAudience(payload.audience);
+      const scheduledAt = payload.scheduledAt ? new Date(payload.scheduledAt) : null;
+      if (scheduledAt && (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now())) {
+        throw new Error('Choose a future date and time.');
+      }
 
       if (contacts.length === 0) {
         throw new Error('No contacts found for this audience.');
@@ -428,8 +439,10 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             stageIds: payload.audience.stageIds,
             customField: payload.audience.customField,
             excludeTagIds: payload.audience.excludeTagIds,
+            headerMediaUrl: payload.headerMediaUrl?.trim(),
           },
-          status: 'sending',
+          status: scheduledAt ? 'draft' : 'sending',
+          scheduled_at: scheduledAt?.toISOString() ?? null,
           total_recipients: contacts.length,
           sent_count: 0,
           delivered_count: 0,
@@ -459,13 +472,22 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
         supabase,
         contacts.map((c) => c.id)
       );
+      const dealByContact = new Map<string, Record<string, unknown>>();
+      if (payload.audience.type === 'stages' && payload.audience.stageIds?.length) {
+        const { data: deals, error: dealError } = await supabase.from('deals').select('*').in('stage_id', payload.audience.stageIds).order('created_at', { ascending: false });
+        if (dealError) throw new Error(`Failed to load deal variables: ${dealError.message}`);
+        for (const deal of deals ?? []) if (deal.contact_id && !dealByContact.has(deal.contact_id)) dealByContact.set(deal.contact_id, deal);
+      }
+      const csvByPhone = new Map((payload.audience.csvContacts ?? []).map((row) => [normalizeKey(row.phone), row.columns ?? {}]));
       const paramsByContact = new Map(
         contacts.map((contact) => [
           contact.id,
           resolveVariables(
             payload.variables,
             contact,
-            customValueIndex.get(contact.id)
+            customValueIndex.get(contact.id),
+            dealByContact.get(contact.id),
+            csvByPhone.get(normalizeKey(contact.phone ?? ''))
           ),
         ])
       );
@@ -498,6 +520,13 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             `Failed to insert recipient batch ${i / INSERT_BATCH_SIZE + 1}: ${recipientError.message}`
           );
         }
+      }
+
+      if (scheduledAt) {
+        const { error: scheduleError } = await supabase.from('broadcasts').update({ status: 'scheduled' }).eq('id', broadcast.id);
+        if (scheduleError) throw new Error(`Failed to schedule broadcast: ${scheduleError.message}`);
+        setProgress(100);
+        return broadcast.id;
       }
 
       // ── Step 4: Fetch recipients back (joined contact) ────────────
