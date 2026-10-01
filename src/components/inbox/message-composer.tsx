@@ -217,7 +217,7 @@ export function MessageComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed || sending || sessionExpired) return;
+    if (!trimmed || sending) return;
 
     setSending(true);
     try {
@@ -229,7 +229,7 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [text, sending, onSend, replyTo?.id]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -796,7 +796,7 @@ export function MessageComposer({
                     ? t("sessionExpiredPlaceholder")
                     : t("typeMessagePlaceholder")
               }
-              disabled={sessionExpired || readOnly}
+              disabled={readOnly}
               rows={1}
               // Textarea keeps its own inline title — the GatedButton
               // wrapping pattern doesn't apply to non-button inputs.
@@ -804,7 +804,7 @@ export function MessageComposer({
               title={readOnly ? t("readOnlyTitle") : undefined}
               className={cn(
                 "w-full resize-none rounded-xl border border-border bg-muted py-2.5 pl-4 pr-11 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-                (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+                readOnly && "cursor-not-allowed opacity-50"
               )}
             />
             <button
@@ -831,7 +831,7 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={!text.trim() || sending}
             onClick={handleSend}
             className="h-10 w-10 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
           >

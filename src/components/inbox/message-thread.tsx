@@ -581,7 +581,7 @@ export function MessageThread({
         sender_type: 'agent',
         content_type: 'text',
         content_text: text,
-        status: 'sending',
+        status: sessionInfo.expired ? 'pending_approval' : 'sending',
         created_at: new Date().toISOString(),
         reply_to_message_id: replyToId,
       };
@@ -597,6 +597,7 @@ export function MessageThread({
             message_type: 'text',
             content_text: text,
             reply_to_message_id: replyToId,
+            queue_for_approval: sessionInfo.expired,
           }),
         });
 
@@ -614,7 +615,7 @@ export function MessageThread({
         // Success — the realtime INSERT event will replace the temp bubble
         // with the real DB row. If realtime hasn't arrived yet, at least
         // flip status to 'sent' so the UI stops showing "sending".
-        onUpdateMessage(tempId, { status: 'sent' });
+        onUpdateMessage(tempId, { status: sessionInfo.expired ? 'pending_approval' : 'sent' });
       } catch (err) {
         console.error('Failed to send message:', err);
         const reason = err instanceof Error ? err.message : 'network error';
@@ -622,7 +623,7 @@ export function MessageThread({
         onUpdateMessage(tempId, { status: 'failed' });
       }
     },
-    [conversation, onNewMessage, onUpdateMessage]
+    [conversation, sessionInfo.expired, onNewMessage, onUpdateMessage]
   );
 
   const handleSendMedia = useCallback(

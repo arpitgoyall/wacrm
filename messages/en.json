@@ -199,10 +199,10 @@
       "noCustomerMessages": "No customer messages"
     },
     "composer": {
-      "sessionExpiredHint": "24-hour session expired. Use a template to re-engage.",
+      "sessionExpiredHint": "24-hour window expired. Your message will send after Meta approves it as a Utility template.",
       "templates": "Templates",
       "readOnlyPlaceholder": "Read-only — viewers can browse but not reply",
-      "sessionExpiredPlaceholder": "Session expired - use a template",
+      "sessionExpiredPlaceholder": "Type a message for template approval",
       "typeMessagePlaceholder": "Type a message... (Shift+Enter for new line)",
       "readOnlyTitle": "Read-only — your role can't send messages",
       "recording": "Recording… {current} / {max}",

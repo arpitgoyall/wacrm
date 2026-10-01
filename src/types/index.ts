@@ -252,7 +252,7 @@ export type ContentType =
   /** Customer tapped a reply button or list row on a message we sent. */
   | 'interactive';
 export type MessageStatus =
-  'sending' | 'sent' | 'delivered' | 'read' | 'failed';
+  'sending' | 'pending_approval' | 'sent' | 'delivered' | 'read' | 'failed' | 'rejected';
 
 export interface Message {
   id: string;

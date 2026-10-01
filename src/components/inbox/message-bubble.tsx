@@ -48,6 +48,8 @@ function StatusIcon({ status }: { status: Message['status'] }) {
   switch (status) {
     case 'sending':
       return <Clock className="text-muted-foreground h-3 w-3" />;
+    case 'pending_approval':
+      return <span className="text-[10px]">Pending approval</span>;
     case 'sent':
       return <Check className="text-muted-foreground h-3 w-3" />;
     case 'delivered':
@@ -56,6 +58,8 @@ function StatusIcon({ status }: { status: Message['status'] }) {
       return <CheckCheck className="h-3 w-3 text-blue-400" />;
     case 'failed':
       return <XCircle className="h-3 w-3 text-red-400" />;
+    case 'rejected':
+      return <span className="text-[10px] text-red-400">Rejected</span>;
     default:
       return null;
   }

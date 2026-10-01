@@ -11,6 +11,7 @@ import {
   SendMessageError,
 } from '@/lib/whatsapp/send-message'
 import { findOrCreateConversation } from '@/lib/conversations/find-or-create'
+import { queueTemplateMessage } from '@/lib/whatsapp/queue-template-message'
 
 // The dashboard's outbound-send endpoint. It owns auth, per-user rate
 // limiting, and the two ways the UI targets a thread — an existing
@@ -58,6 +59,7 @@ export async function POST(request: Request) {
       template_message_params,
       interactive_payload,
       reply_to_message_id,
+      queue_for_approval,
     } = body
 
     if ((!conversationIdInput && !contact_id) || !message_type) {
@@ -146,6 +148,20 @@ export async function POST(request: Request) {
         { error: 'Conversation not found' },
         { status: 404 }
       )
+    }
+
+    if (queue_for_approval) {
+      if (message_type !== 'text' || typeof content_text !== 'string') {
+        return NextResponse.json({ error: 'Only text can be submitted for approval.' }, { status: 400 })
+      }
+      try {
+        const messageId = await queueTemplateMessage(
+          supabase, accountId, userId, conversationId, content_text, reply_to_message_id,
+        )
+        return NextResponse.json({ success: true, message_id: messageId, pending_approval: true })
+      } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : 'Template submission failed.' }, { status: 502 })
+      }
     }
 
     // Delegate to the shared send core (validates, sends to Meta with

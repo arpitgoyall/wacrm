@@ -31,6 +31,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { normalizeStatus } from './template-status-normalize'
+import { sendApprovedPendingMessage } from './pending-template-message'
 
 const TEMPLATE_WEBHOOK_FIELDS = new Set([
   'message_template_status_update',
@@ -151,7 +152,7 @@ async function handleStatusUpdate(
     .from('message_templates')
     .update(update)
     .eq('meta_template_id', metaTemplateId)
-    .select('id')
+    .select('id,name')
 
   if (error) {
     console.error(
@@ -162,6 +163,23 @@ async function handleStatusUpdate(
     return
   }
   if (!data || data.length === 0) {
+    // A very fast review can arrive before the submit response has stored
+    // Meta's id. Generated inbox names are globally unique UUIDs.
+    if (value.message_template_name?.startsWith('inbox_')) {
+      const { data: early } = await supabase.from('message_templates')
+        .update({ ...update, meta_template_id: metaTemplateId })
+        .eq('name', value.message_template_name)
+        .is('meta_template_id', null)
+        .select('id,name')
+      if (early?.length) {
+        if (status === 'APPROVED') await sendApprovedPendingMessage(supabase, value.message_template_name)
+        if (status === 'REJECTED') {
+          await supabase.from('messages').update({ status: 'rejected' })
+            .eq('template_name', value.message_template_name).eq('status', 'pending_approval')
+        }
+        return
+      }
+    }
     console.warn(
       '[template-webhook] status update received for unknown template:',
       metaTemplateId,
@@ -173,6 +191,14 @@ async function handleStatusUpdate(
     console.warn(
       `[template-webhook] status update matched ${data.length} rows for meta_template_id ${metaTemplateId} — investigate.`,
     )
+  }
+  for (const row of data) {
+    if (!row.name) continue
+    if (status === 'APPROVED') await sendApprovedPendingMessage(supabase, row.name)
+    if (status === 'REJECTED') {
+      await supabase.from('messages').update({ status: 'rejected' })
+        .eq('template_name', row.name).eq('status', 'pending_approval')
+    }
   }
 }
 
