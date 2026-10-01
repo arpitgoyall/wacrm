@@ -19,7 +19,7 @@ export const maxDuration = 60
  *   2. Drain the `deal_stage_events` outbox (migration 050) → fire the
  *      `deal_stage_changed` trigger. Folded in here rather than a
  *      separate endpoint so there's one fewer cron for operators to
- *      schedule (Vercel Hobby allows only 2 cron jobs total).
+ *      schedule. Vercel's daily endpoint calls this handler.
  *
  * Auth: `Authorization: Bearer $CRON_SECRET` (Vercel Cron) OR
  * `x-cron-secret: $AUTOMATION_CRON_SECRET` (external pinger). See

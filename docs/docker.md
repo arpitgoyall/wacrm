@@ -76,18 +76,11 @@ docker run -d --env-file .env.local -e PORT=3000 -p 3000:3000 wacrm
   Run `/api/automations/cron` every minute or two; `/api/flows/cron`
   every 10-15 minutes is plenty. Configured no-reply follow-ups also
   use the Flow cron; run it at least hourly for accurate reminder timing.
-- On **Vercel**, `vercel.json` `crons` (already checked in) triggers
-  both endpoints — set `CRON_SECRET` in the project env and Vercel
-  sends it as `Authorization: Bearer` automatically. The checked-in
-  schedules are **once daily** (`0 3 * * *` / `0 4 * * *`) because
-  Vercel **Hobby rejects any sub-daily cron expression at deploy
-  time**. Daily is fine for `deal_stage_changed` → Meta conversions
-  (attribution windows are days) but means automation Wait steps and
-  flow timeouts only advance once a day. Configured no-reply follow-ups
-  need a more frequent schedule: either upgrade to **Pro** and change
-  the Flow schedule to `0 * * * *` (or more often),
-  or leave Vercel's cron daily and additionally point an external
-  every-few-minutes pinger at the same URLs with the `x-cron-secret`
-  header. The `/api/automations/cron` handler drains its full backlog
-  per run (batched, ~45s budget), so a daily run still clears a whole
-  day of events.
+- On **Vercel**, `vercel.json` configures one daily cron at
+  `/api/cron/daily` (`0 3 * * *`, UTC). It invokes automation, Flow,
+  and scheduled-broadcast maintenance. Set `CRON_SECRET` in the project
+  environment; Vercel sends it as `Authorization: Bearer`. Vercel
+  Hobby permits only daily schedules, so Wait steps, Flow follow-ups,
+  and scheduled broadcasts can run up to a day late. For prompt
+  execution, use an external scheduler with `x-cron-secret` and
+  `AUTOMATION_CRON_SECRET`, or a plan that permits more frequent jobs.

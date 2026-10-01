@@ -189,6 +189,7 @@
       "creatingDeal": "Creating…",
       "dealCreateError": "Couldn't create deal",
       "dealStageUpdateError": "Couldn't update stage",
+      "saveStage": "Save stage",
       "dealStageUnknown": "Unknown stage",
       "dealNoStagesHint": "This pipeline has no stages yet"
     },
