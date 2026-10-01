@@ -6,6 +6,7 @@ import { MessageTemplate } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Loader2, FileText, ArrowRight } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { isTemporaryTemplateName } from '@/lib/whatsapp/temporary-template-name';
 
 const categoryColors: Record<string, string> = {
   Marketing: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
@@ -40,7 +41,7 @@ export function Step1ChooseTemplate({ selectedTemplate, onSelect, onNext, onBack
           .order('created_at', { ascending: false });
 
         if (fetchError) throw fetchError;
-        setTemplates(data ?? []);
+        setTemplates((data ?? []).filter((template) => !isTemporaryTemplateName(template.name)));
       } catch (err) {
         setError(err instanceof Error ? err.message : t('chooseTemplate.errorLoad'));
       } finally {

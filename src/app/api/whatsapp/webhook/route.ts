@@ -12,6 +12,7 @@ import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { resolveAdBinding } from '@/lib/ads/bindings'
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
+import { deleteDeliveredTemporaryTemplate } from '@/lib/whatsapp/temporary-template'
 import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
@@ -452,7 +453,7 @@ async function handleStatusUpdate(status: {
   //    the owning account for delivery.
   const { data: msgRow } = await supabaseAdmin()
     .from('messages')
-    .select('conversation_id, conversations(account_id)')
+    .select('conversation_id, template_name, conversations(account_id)')
     .eq('message_id', status.id)
     .limit(1)
     .maybeSingle()
@@ -461,6 +462,13 @@ async function handleStatusUpdate(status: {
     const conv = msgRow.conversations as { account_id: string } | null
     const accountId = conv?.account_id
     if (accountId) {
+      if (msgRow.template_name && (status.status === 'delivered' || status.status === 'read')) {
+        try {
+          await deleteDeliveredTemporaryTemplate(supabaseAdmin(), accountId, msgRow.template_name)
+        } catch (error) {
+          console.error('[temporary-template] delivery cleanup failed:', error)
+        }
+      }
       await dispatchWebhookEvent(
         supabaseAdmin(),
         accountId,

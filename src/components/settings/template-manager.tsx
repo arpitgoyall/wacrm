@@ -32,6 +32,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { useTranslations } from 'next-intl';
+import { isTemporaryTemplateName } from '@/lib/whatsapp/temporary-template-name';
 import { Card, CardContent } from '@/components/ui/card';
 import { SettingsPanelHead } from './settings-panel-head';
 import {
@@ -400,7 +401,7 @@ export function TemplateManager() {
         .select('*')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      setTemplates(data || []);
+      setTemplates((data || []).filter((template) => !isTemporaryTemplateName(template.name)));
     } catch (err) {
       console.error('Failed to fetch templates:', err);
       toast.error(t('toastLoadFailed'));

@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { THEMES } from '@/lib/themes';
 import { CURRENCIES } from '@/lib/currency';
+import { isTemporaryTemplateName } from '@/lib/whatsapp/temporary-template-name';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -72,11 +73,11 @@ export function SettingsOverview({
             : Promise.resolve(null),
           supabase
             .from('message_templates')
-            .select('id', { count: 'exact', head: true })
+            .select('name')
             .eq('user_id', userId),
           supabase
             .from('message_templates')
-            .select('id', { count: 'exact', head: true })
+            .select('name')
             .eq('user_id', userId)
             .eq('status', 'PENDING'),
           supabase
@@ -104,11 +105,11 @@ export function SettingsOverview({
         pendingInvites,
         templates:
           templatesTotal.status === 'fulfilled'
-            ? templatesTotal.value.count ?? null
+            ? templatesTotal.value.data?.filter((row) => !isTemporaryTemplateName(row.name)).length ?? null
             : null,
         templatesPending:
           templatesPending.status === 'fulfilled'
-            ? templatesPending.value.count ?? null
+            ? templatesPending.value.data?.filter((row) => !isTemporaryTemplateName(row.name)).length ?? null
             : null,
         tags: tagsRes.status === 'fulfilled' ? tagsRes.value.count ?? null : null,
         customFields:

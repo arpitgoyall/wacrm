@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 import { useTranslations } from "next-intl";
+import { isTemporaryTemplateName } from '@/lib/whatsapp/temporary-template-name';
 
 export interface TemplateSendValues {
   body: string[];
@@ -226,7 +227,7 @@ export function TemplatePicker({
         console.error("Failed to fetch templates:", error);
         setTemplates([]);
       } else {
-        setTemplates((data as MessageTemplate[]) ?? []);
+        setTemplates(((data as MessageTemplate[]) ?? []).filter((template) => !isTemporaryTemplateName(template.name)));
       }
       setLoading(false);
     })();

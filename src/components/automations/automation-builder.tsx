@@ -10,6 +10,7 @@ import {
 } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { isTemporaryTemplateName } from "@/lib/whatsapp/temporary-template-name"
 import { toast } from "sonner"
 import {
   ArrowLeft,
@@ -295,7 +296,7 @@ function ResourcesProvider({ children }: { children: ReactNode }) {
         ])
       if (cancelled) return
       setTags((tagsRes.data as TagRecord[] | null) ?? [])
-      setTemplates((templatesRes.data as MessageTemplate[] | null) ?? [])
+      setTemplates(((templatesRes.data as MessageTemplate[] | null) ?? []).filter((template) => !isTemporaryTemplateName(template.name)))
       setCustomFields((customFieldsRes.data as CustomField[] | null) ?? [])
       setPipelines((pipelinesRes.data as PipelineOption[] | null) ?? [])
       setStages((stagesRes.data as PipelineStageOption[] | null) ?? [])

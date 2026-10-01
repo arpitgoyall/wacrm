@@ -7,6 +7,7 @@ import {
 } from '@/lib/auth/account'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
+import { isTemporaryTemplateName } from '@/lib/whatsapp/temporary-template-name'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
 
 /**
@@ -199,6 +200,8 @@ export async function POST() {
     const errors: { name: string; language: string; message: string }[] = []
 
     for (const t of metaTemplates) {
+      // Inbox-generated one-use templates never belong in the reusable catalog.
+      if (isTemporaryTemplateName(t.name)) continue
       const body = (t.components ?? []).find((c) => c.type === 'BODY')
       const header = (t.components ?? []).find((c) => c.type === 'HEADER')
       const footer = (t.components ?? []).find((c) => c.type === 'FOOTER')
