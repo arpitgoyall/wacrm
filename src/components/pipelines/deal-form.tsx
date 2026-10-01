@@ -1,13 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { CURRENCIES } from '@/lib/currency';
 import type {
   Contact,
-  Conversation,
   Deal,
   DealStatus,
   PipelineStage,
@@ -36,7 +34,6 @@ import {
   Check,
   X,
   Trash2,
-  MessageSquare,
   DollarSign,
   Loader2,
 } from 'lucide-react';
@@ -91,8 +88,6 @@ export function DealForm({
 
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [linkedConversation, setLinkedConversation] =
-    useState<Conversation | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [statusAction, setStatusAction] = useState<DealStatus | null>(null);
@@ -159,32 +154,6 @@ export function DealForm({
       cancelled = true;
     };
   }, [open, supabase, isOwner]);
-
-  // Fetch linked conversation for the selected contact (newest open one).
-  // Clearing on no-selection is sync with prop state; the populated
-  // case runs setLinkedConversation inside the async fetch callback.
-  useEffect(() => {
-    if (!open || !contactId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLinkedConversation(null);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      const { data } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('contact_id', contactId)
-        .order('last_message_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (cancelled) return;
-      setLinkedConversation((data as Conversation | null) ?? null);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [open, contactId, supabase]);
 
   async function handleSave() {
     if (!title.trim() || !contactId || !stageId) {
@@ -372,15 +341,6 @@ export function DealForm({
                 ))}
               </select>
 
-              {linkedConversation && (
-                <Link
-                  href="/inbox"
-                  className="bg-primary/10 text-primary hover:bg-primary/20 mt-1 inline-flex items-center gap-1.5 self-start rounded-md px-2 py-1 text-xs"
-                >
-                  <MessageSquare className="h-3 w-3" />
-                  {t('linkToConversation')}
-                </Link>
-              )}
             </div>
 
             <div className="grid grid-cols-[1fr_110px] gap-3">

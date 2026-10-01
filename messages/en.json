@@ -567,6 +567,7 @@
     "card": {
       "noContact": "No contact",
       "callContact": "Call contact",
+      "openWhatsAppInbox": "Open WhatsApp inbox",
       "won": "Won",
       "lost": "Lost"
     },
@@ -578,7 +579,6 @@
       "contact": "Contact",
       "selectContact": "Select a contact",
       "callContact": "Call contact",
-      "linkToConversation": "Link to Conversation",
       "value": "Value",
       "currency": "Currency",
       "expectedCloseDate": "Expected Close Date",

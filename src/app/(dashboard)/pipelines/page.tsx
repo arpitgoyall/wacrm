@@ -111,7 +111,34 @@ export default function PipelinesPage() {
         )
         .eq('pipeline_id', pipelineId)
         .order('created_at', { ascending: false });
-      return (data ?? []) as Deal[];
+      const rows = (data ?? []) as Deal[];
+      const contactIds = [
+        ...new Set(
+          rows.flatMap((deal) => (deal.contact_id ? [deal.contact_id] : []))
+        ),
+      ];
+      if (contactIds.length === 0) return rows;
+
+      const { data: conversations } = await supabase
+        .from('conversations')
+        .select('id, contact_id')
+        .in('contact_id', contactIds)
+        .order('last_message_at', { ascending: false });
+      const conversationByContact = new Map<string, string>();
+      for (const conversation of conversations ?? []) {
+        if (
+          conversation.contact_id &&
+          !conversationByContact.has(conversation.contact_id)
+        ) {
+          conversationByContact.set(conversation.contact_id, conversation.id);
+        }
+      }
+      return rows.map((deal) => ({
+        ...deal,
+        conversation_id: deal.contact_id
+          ? conversationByContact.get(deal.contact_id)
+          : undefined,
+      }));
     },
     [supabase]
   );
