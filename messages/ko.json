@@ -546,6 +546,14 @@
       "addPipeline": "파이프라인 추가",
       "addDeal": "딜 추가",
       "bulkTransfer": "일괄 이관",
+      "exitBulkTransfer": "일괄 이관 종료",
+      "transferFromAgent": "기존 담당자",
+      "chooseTransferAgent": "기존 담당자 선택",
+      "selectedForTransfer": "리드 {count}개 선택",
+      "clearSelection": "선택 해제",
+      "transferSelected": "선택한 리드 이관",
+      "stageSelectionHint": "기존 담당자를 선택한 뒤 개별 딜을 선택하거나 각 단계 헤더의 체크박스로 해당 열 전체를 선택하세요.",
+      "transferBatchLimit": "한 번에 최대 1,000개의 리드를 이관할 수 있습니다. 일부 리드의 선택을 해제하세요.",
       "createdFrom": "생성일 시작",
       "createdTo": "생성일 종료",
       "allAgents": "모든 담당자",
@@ -570,7 +578,8 @@
     },
     "transfer": {
       "title": "리드 일괄 이관",
-      "description": "담당자를 선택하고 현재 파이프라인과 필터에 해당하는 리드를 선택하세요.",
+      "description": "보드에서 선택한 리드를 확인하고 새 담당자를 선택하세요.",
+      "reviewSelected": "선택한 리드 {count}개",
       "fromAgent": "기존 담당자",
       "toAgent": "새 담당자",
       "selectAgent": "담당자 선택",
@@ -589,12 +598,15 @@
     },
     "board": {
       "dropDealHere": "여기에 딜을 놓으세요",
+      "noLeadsHere": "이 단계에 리드가 없습니다",
+      "selectAllInStage": "{name} 단계의 모든 리드 선택",
       "addDeal": "딜 추가"
     },
     "card": {
       "noContact": "연락처 없음",
       "callContact": "연락처에 전화",
       "openWhatsAppInbox": "WhatsApp 받은 편지함 열기",
+      "selectForTransfer": "{title} 이관 선택",
       "won": "성사",
       "lost": "실패"
     },

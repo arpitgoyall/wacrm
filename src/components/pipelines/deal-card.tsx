@@ -6,12 +6,18 @@ import { Calendar, Check, PhoneCall, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 import { CreatedAge } from "@/components/created-age";
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface DealCardProps {
   deal: Deal;
   stage: PipelineStage | null;
   onEdit: (deal: Deal) => void;
   isOverlay?: boolean;
+  selection?: {
+    checked: boolean;
+    disabled: boolean;
+    onCheckedChange: (checked: boolean) => void;
+  };
 }
 
 function formatDate(dateStr: string) {
@@ -28,49 +34,78 @@ function initials(name?: string, fallback?: string) {
   return source.charAt(0).toUpperCase();
 }
 
-export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
+export function DealCard({
+  deal,
+  stage,
+  onEdit,
+  isOverlay,
+  selection,
+}: DealCardProps) {
   const t = useTranslations("Pipelines.card");
-  const contactLabel = deal.contact?.name || deal.contact?.phone || t("noContact");
+  const contactLabel =
+    deal.contact?.name || deal.contact?.phone || t("noContact");
   const contactPhone = deal.contact?.phone;
   const assigneeLabel = deal.assignee?.full_name || null;
 
   return (
     <div
       role="button"
-      tabIndex={isOverlay ? -1 : 0}
+      tabIndex={isOverlay || selection?.disabled ? -1 : 0}
+      aria-pressed={selection ? selection.checked : undefined}
+      aria-disabled={selection?.disabled}
       onClick={(e) => {
         // `onClick` still fires after a non-drag tap because the PointerSensor
         // requires 5px movement before it counts as a drag.
         if (isOverlay) return;
         e.stopPropagation();
-        onEdit(deal);
+        if (selection) {
+          if (!selection.disabled)
+            selection.onCheckedChange(!selection.checked);
+        } else onEdit(deal);
       }}
       onKeyDown={(e) => {
         if (isOverlay) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onEdit(deal);
+          if (selection) {
+            if (!selection.disabled)
+              selection.onCheckedChange(!selection.checked);
+          } else onEdit(deal);
         }
       }}
-      className={`group relative w-full cursor-pointer rounded-xl border border-border/50 bg-muted/70 pl-4 pr-3 py-3 text-left shadow-sm transition-all ${
+      className={`group relative w-full cursor-pointer rounded-xl border ${selection?.checked ? "border-primary bg-primary/10 ring-primary/30 ring-1" : "border-border/50 bg-muted/70"} py-3 pr-3 pl-4 text-left shadow-sm transition-all ${
         isOverlay
           ? "shadow-xl"
-          : "hover:-translate-y-0.5 hover:border-border hover:bg-muted hover:shadow-lg"
+          : "hover:border-border hover:bg-muted hover:-translate-y-0.5 hover:shadow-lg"
       }`}
     >
       {/* 4px left accent bar using stage color */}
       <span
         aria-hidden
-        className="absolute left-0 top-0 h-full w-1 rounded-l-xl"
+        className="absolute top-0 left-0 h-full w-1 rounded-l-xl"
         style={{ backgroundColor: stage?.color ?? "#94a3b8" }}
       />
 
       <div className="flex items-start justify-between gap-2">
-        <h4 className="flex-1 text-sm font-semibold leading-snug text-foreground break-words">
+        {selection && !isOverlay && (
+          <span
+            onClick={(event) => event.stopPropagation()}
+            onPointerDown={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <Checkbox
+              aria-label={t("selectForTransfer", { title: deal.title })}
+              checked={selection.checked}
+              disabled={selection.disabled}
+              onCheckedChange={selection.onCheckedChange}
+            />
+          </span>
+        )}
+        <h4 className="text-foreground flex-1 text-sm leading-snug font-semibold break-words">
           {deal.title}
         </h4>
         {deal.status === "won" && (
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-semibold text-primary">
+          <span className="bg-primary/15 text-primary inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold">
             <Check className="h-3 w-3" />
             {t("won")}
           </span>
@@ -85,16 +120,18 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
 
       <CreatedAge
         createdAt={deal.created_at}
-        className="mt-2 rounded-full border border-border/50 bg-background/50 px-2 py-0.5 text-[11px]"
+        className="border-border/50 bg-background/50 mt-2 rounded-full border px-2 py-0.5 text-[11px]"
       />
 
       {/* Contact row */}
       <div className="mt-2 flex items-center gap-2">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
+        <span className="bg-muted text-foreground flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold">
           {initials(deal.contact?.name, deal.contact?.phone)}
         </span>
         <div className="min-w-0">
-          <span className="block truncate text-xs text-muted-foreground">{contactLabel}</span>
+          <span className="text-muted-foreground block truncate text-xs">
+            {contactLabel}
+          </span>
           {contactPhone && (
             <a
               href={`tel:${contactPhone}`}
@@ -105,7 +142,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
                 // bubble to the card's own onKeyDown and open the edit modal.
                 if (e.key === "Enter" || e.key === " ") e.stopPropagation();
               }}
-              className="mt-0.5 inline-flex items-center gap-1 text-xs text-primary hover:underline"
+              className="text-primary mt-0.5 inline-flex items-center gap-1 text-xs hover:underline"
             >
               <PhoneCall className="h-3 w-3" />
               {contactPhone}
@@ -115,11 +152,11 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
       </div>
 
       <div className="mt-2 flex items-center justify-between">
-        <span className="text-sm font-bold text-primary">
+        <span className="text-primary text-sm font-bold">
           {formatCurrency(deal.value, deal.currency)}
         </span>
         {deal.expected_close_date && (
-          <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+          <span className="text-muted-foreground flex items-center gap-1 text-[11px]">
             <Calendar className="h-3 w-3" />
             {formatDate(deal.expected_close_date)}
           </span>
@@ -136,7 +173,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         title={t("openWhatsAppInbox")}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
-        className="absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-emerald-600 transition-colors hover:bg-emerald-500/10 hover:text-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+        className="absolute top-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-full text-emerald-600 transition-colors hover:bg-emerald-500/10 hover:text-emerald-500 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none"
       >
         <svg
           viewBox="0 0 24 24"
@@ -152,7 +189,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         <div className="mt-2 flex items-center justify-end">
           <span
             title={assigneeLabel}
-            className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/15 text-[10px] font-semibold text-primary"
+            className="bg-primary/15 text-primary flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold"
           >
             {initials(assigneeLabel)}
           </span>

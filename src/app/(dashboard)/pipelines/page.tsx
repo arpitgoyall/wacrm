@@ -3,6 +3,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { loadPipelineDeals } from '@/lib/pipelines/load-deals';
+import {
+  selectedBoardDeals,
+  updateDealSelection,
+} from '@/lib/pipelines/deal-selection';
 import type { Pipeline, PipelineStage, Deal, Profile } from '@/types';
 import { PipelineBoard } from '@/components/pipelines/pipeline-board';
 import { PipelineSettings } from '@/components/pipelines/pipeline-settings';
@@ -78,6 +82,12 @@ export default function PipelinesPage() {
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bulkTransferOpen, setBulkTransferOpen] = useState(false);
+  const [bulkSelection, setBulkSelection] = useState<{
+    scope: string;
+    enabled: boolean;
+    sourceId: string;
+    dealIds: string[];
+  }>({ scope: '', enabled: false, sourceId: '', dealIds: [] });
 
   // Deal form state is lifted here so both the top-bar "Add Deal" and
   // the per-column "+" trigger the same Sheet.
@@ -217,7 +227,6 @@ export default function PipelinesPage() {
     if (!selectedPipelineId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStages([]);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDeals([]);
       return;
     }
@@ -385,6 +394,66 @@ export default function PipelinesPage() {
     selectedAgentIds,
   ]);
 
+  // A change of account, pipeline or filters starts a fresh selection.
+  const selectionScope = JSON.stringify([
+    accountId,
+    selectedPipelineId,
+    dateFrom,
+    dateTo,
+    [...selectedAgentIds].sort(),
+  ]);
+  const bulkMode =
+    canTransferDeals &&
+    bulkSelection.enabled &&
+    bulkSelection.scope === selectionScope;
+  const bulkSourceId = bulkMode ? bulkSelection.sourceId : '';
+  const stageIds = new Set(stages.map((stage) => stage.id));
+  const boardDeals = filteredDeals.filter(
+    (deal) =>
+      stageIds.has(deal.stage_id) &&
+      (!bulkSourceId || deal.assigned_to === bulkSourceId)
+  );
+  const selectedTransferDeals = bulkMode
+    ? selectedBoardDeals(boardDeals, bulkSelection.dealIds, bulkSourceId)
+    : [];
+  const selectedTransferIds = new Set(
+    selectedTransferDeals.map((deal) => deal.id)
+  );
+
+  function toggleBulkMode() {
+    setBulkTransferOpen(false);
+    setBulkSelection({
+      scope: selectionScope,
+      enabled: !bulkMode,
+      sourceId:
+        !bulkMode && selectedAgentIds.length === 1 ? selectedAgentIds[0] : '',
+      dealIds: [],
+    });
+  }
+
+  function handleBoardSelection(dealIds: string[], checked: boolean) {
+    if (!bulkMode || !bulkSourceId) return;
+    const eligibleIds = new Set(boardDeals.map((deal) => deal.id));
+    const validIds = dealIds.filter((id) => eligibleIds.has(id));
+    setBulkSelection((current) =>
+      current.scope === selectionScope && current.sourceId === bulkSourceId
+        ? {
+            ...current,
+            dealIds: updateDealSelection(
+              current.dealIds.filter((id) => eligibleIds.has(id)),
+              validIds,
+              checked
+            ),
+          }
+        : current
+    );
+  }
+
+  async function handleBulkTransferred() {
+    setBulkSelection((current) => ({ ...current, dealIds: [] }));
+    await refreshDeals();
+  }
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -458,16 +527,18 @@ export default function PipelinesPage() {
         <div className="flex flex-wrap items-center gap-2">
           {canTransferDeals && (
             <Button
-              variant="outline"
+              variant={bulkMode ? 'default' : 'outline'}
+              aria-pressed={bulkMode}
               disabled={
-                !selectedPipelineId ||
-                agents.length === 0 ||
-                filteredDeals.length === 0
+                !bulkMode &&
+                (!selectedPipelineId ||
+                  agents.length === 0 ||
+                  filteredDeals.length === 0)
               }
-              onClick={() => setBulkTransferOpen(true)}
+              onClick={toggleBulkMode}
             >
               <ArrowRightLeft className="mr-1 h-4 w-4" />
-              {t('bulkTransfer')}
+              {bulkMode ? t('exitBulkTransfer') : t('bulkTransfer')}
             </Button>
           )}
           <GatedButton
@@ -565,6 +636,75 @@ export default function PipelinesPage() {
         </div>
       )}
 
+      {bulkMode && (
+        <div className="border-primary/30 bg-primary/5 space-y-3 rounded-lg border p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="grid gap-1">
+              <Label htmlFor="bulk-transfer-source">
+                {t('transferFromAgent')}
+              </Label>
+              <select
+                id="bulk-transfer-source"
+                value={bulkSourceId}
+                className="border-input bg-background h-9 w-56 rounded-lg border px-3 text-sm"
+                onChange={(event) =>
+                  setBulkSelection({
+                    scope: selectionScope,
+                    enabled: true,
+                    sourceId: event.target.value,
+                    dealIds: [],
+                  })
+                }
+              >
+                <option value="">{t('chooseTransferAgent')}</option>
+                {agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.full_name || agent.email}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span
+              aria-live="polite"
+              className="text-muted-foreground py-2 text-sm"
+            >
+              {t('selectedForTransfer', {
+                count: selectedTransferDeals.length,
+              })}
+            </span>
+            <Button
+              variant="ghost"
+              disabled={selectedTransferDeals.length === 0}
+              onClick={() =>
+                setBulkSelection((current) => ({ ...current, dealIds: [] }))
+              }
+            >
+              {t('clearSelection')}
+            </Button>
+            <Button
+              className="sm:ml-auto"
+              disabled={
+                !bulkSourceId ||
+                selectedTransferDeals.length === 0 ||
+                selectedTransferDeals.length > 1000
+              }
+              onClick={() => setBulkTransferOpen(true)}
+            >
+              <ArrowRightLeft className="h-4 w-4" />
+              {t('transferSelected')}
+            </Button>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            {t('stageSelectionHint')}
+          </p>
+          {selectedTransferDeals.length > 1000 && (
+            <p role="alert" className="text-destructive text-sm">
+              {t('transferBatchLimit')}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Board */}
       {pipelines.length === 0 ? (
         <div className="border-border flex flex-col items-center justify-center rounded-xl border border-dashed py-20">
@@ -587,13 +727,30 @@ export default function PipelinesPage() {
         </div>
       ) : (
         <>
-          <PipelineAnalytics stages={stages} deals={filteredDeals} />
+          <PipelineAnalytics stages={stages} deals={boardDeals} />
           <PipelineBoard
             stages={stages}
-            deals={filteredDeals}
+            deals={boardDeals}
             onDealMoved={handleDealMoved}
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
+            selection={
+              bulkMode
+                ? {
+                    selectedDealIds: selectedTransferIds,
+                    canSelect: !!bulkSourceId,
+                    onDealChecked: (id, checked) =>
+                      handleBoardSelection([id], checked),
+                    onStageChecked: (id, checked) =>
+                      handleBoardSelection(
+                        boardDeals
+                          .filter((deal) => deal.stage_id === id)
+                          .map((deal) => deal.id),
+                        checked
+                      ),
+                  }
+                : undefined
+            }
           />
         </>
       )}
@@ -657,16 +814,14 @@ export default function PipelinesPage() {
       )}
 
       {/* Deal Form (Sheet) */}
-      {bulkTransferOpen && canTransferDeals && (
+      {bulkTransferOpen && bulkMode && selectedTransferDeals.length > 0 && (
         <BulkTransferDialog
           key={`${accountId}:${selectedPipelineId}`}
-          deals={filteredDeals}
+          deals={selectedTransferDeals}
           agents={agents}
-          initialSourceId={
-            selectedAgentIds.length === 1 ? selectedAgentIds[0] : undefined
-          }
+          sourceProfileId={bulkSourceId}
           onOpenChange={setBulkTransferOpen}
-          onTransferred={refreshDeals}
+          onTransferred={handleBulkTransferred}
         />
       )}
       <DealForm

@@ -546,6 +546,14 @@
       "addPipeline": "Add Pipeline",
       "addDeal": "Add Deal",
       "bulkTransfer": "Bulk Transfer",
+      "exitBulkTransfer": "Exit Bulk Transfer",
+      "transferFromAgent": "From agent",
+      "chooseTransferAgent": "Choose the sending agent",
+      "selectedForTransfer": "{count, plural, =1 {1 lead selected} other {# leads selected}}",
+      "clearSelection": "Clear selection",
+      "transferSelected": "Transfer selected",
+      "stageSelectionHint": "Choose the sending agent, then select individual deals or use each stage header checkbox to select the whole column.",
+      "transferBatchLimit": "Select up to 1,000 leads per transfer. Deselect some leads to continue.",
       "createdFrom": "Created from",
       "createdTo": "Created to",
       "allAgents": "All agents",
@@ -570,7 +578,8 @@
     },
     "transfer": {
       "title": "Bulk transfer leads",
-      "description": "Choose agents and select leads from the current pipeline and filters.",
+      "description": "Review the leads selected on the board and choose the receiving agent.",
+      "reviewSelected": "{count, plural, =1 {1 selected lead} other {# selected leads}}",
       "fromAgent": "From agent",
       "toAgent": "To agent",
       "selectAgent": "Select an agent",
@@ -589,12 +598,15 @@
     },
     "board": {
       "dropDealHere": "Drop a deal here",
+      "noLeadsHere": "No leads in this stage",
+      "selectAllInStage": "Select all leads in {name}",
       "addDeal": "Add Deal"
     },
     "card": {
       "noContact": "No contact",
       "callContact": "Call contact",
       "openWhatsAppInbox": "Open WhatsApp inbox",
+      "selectForTransfer": "Select {title} for transfer",
       "won": "Won",
       "lost": "Lost"
     },

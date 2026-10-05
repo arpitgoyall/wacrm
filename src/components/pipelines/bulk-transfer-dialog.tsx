@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ArrowRightLeft, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import type { Deal, Profile } from '@/types';
 import { canSendMessages } from '@/lib/auth/roles';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -20,46 +20,30 @@ import {
 } from '@/components/ui/dialog';
 
 interface BulkTransferDialogProps {
+  /** Only the leads selected on the board, from the chosen sending agent. */
   deals: Deal[];
   agents: Profile[];
-  initialSourceId?: string;
+  sourceProfileId: string;
   onOpenChange: (open: boolean) => void;
   onTransferred: () => Promise<void>;
 }
 
-// Mounted only while open, so selections never survive closing the dialog
-// or switching the account/pipeline. `deals` already respects board filters.
+// Selection happens on the board. This dialog reviews exactly those leads.
 export function BulkTransferDialog({
   deals,
   agents,
-  initialSourceId,
+  sourceProfileId,
   onOpenChange,
   onTransferred,
 }: BulkTransferDialogProps) {
   const t = useTranslations('Pipelines.transfer');
-  const [sourceId, setSourceId] = useState(
-    initialSourceId ??
-      agents.find((agent) =>
-        deals.some((deal) => deal.assigned_to === agent.id)
-      )?.id ??
-      ''
-  );
+  const sourceId = sourceProfileId;
   const [targetId, setTargetId] = useState('');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [transferring, setTransferring] = useState(false);
   const submitting = useRef(false);
 
-  const eligibleDeals = useMemo(
-    () => deals.filter((deal) => deal.assigned_to === sourceId),
-    [deals, sourceId]
-  );
-  const eligibleIds = new Set(eligibleDeals.map((deal) => deal.id));
-  const selectedDealIds = selectedIds.filter((id) => eligibleIds.has(id));
-  const selectedSet = new Set(selectedDealIds);
-  const batchDeals = eligibleDeals.slice(0, 1000);
-  const allSelected =
-    batchDeals.length > 0 &&
-    batchDeals.every((deal) => selectedSet.has(deal.id));
+  const selectedDealIds = deals.map((deal) => deal.id);
+  const source = agents.find((agent) => agent.id === sourceId);
   const recipients = agents.filter(
     (agent) => agent.account_role && canSendMessages(agent.account_role)
   );
@@ -92,7 +76,7 @@ export function BulkTransferDialog({
       if (!response.ok) {
         toast.error(body.error || t('failed'));
         if (response.status === 409) {
-          setSelectedIds([]);
+          onOpenChange(false);
           await onTransferred();
         }
         return;
@@ -135,25 +119,11 @@ export function BulkTransferDialog({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="transfer-source">{t('fromAgent')}</Label>
-            <select
+            <Input
               id="transfer-source"
-              value={sourceId}
-              disabled={transferring}
-              className={selectClassName}
-              onChange={(event) => {
-                const id = event.target.value;
-                setSourceId(id);
-                setSelectedIds([]);
-                if (targetId === id) setTargetId('');
-              }}
-            >
-              <option value="">{t('selectAgent')}</option>
-              {agents.map((agent) => (
-                <option key={agent.id} value={agent.id}>
-                  {agent.full_name || agent.email}
-                </option>
-              ))}
-            </select>
+              value={source?.full_name || source?.email || ''}
+              readOnly
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor="transfer-target">{t('toAgent')}</Label>
@@ -177,64 +147,22 @@ export function BulkTransferDialog({
         </div>
 
         <div className="overflow-hidden rounded-lg border">
-          <div className="bg-muted/50 flex items-center gap-3 border-b p-3">
-            <Checkbox
-              id="transfer-select-all"
-              checked={allSelected}
-              indeterminate={selectedDealIds.length > 0 && !allSelected}
-              disabled={transferring || eligibleDeals.length === 0}
-              onCheckedChange={(checked) =>
-                setSelectedIds(checked ? batchDeals.map((deal) => deal.id) : [])
-              }
-            />
-            <Label htmlFor="transfer-select-all" className="flex-1">
-              {eligibleDeals.length > 1000 ? t('selectBatch') : t('selectAll')}
-            </Label>
-            <span aria-live="polite" className="text-muted-foreground text-xs">
-              {t('selectedCount', {
-                selected: selectedDealIds.length,
-                total: eligibleDeals.length,
-              })}
-            </span>
-          </div>
-          <div className="max-h-64 overflow-y-auto">
-            {eligibleDeals.length === 0 ? (
-              <p className="text-muted-foreground p-6 text-center text-sm">
-                {t('noLeads')}
-              </p>
-            ) : (
-              eligibleDeals.map((deal) => (
-                <div
-                  key={deal.id}
-                  className="flex items-center gap-3 border-b p-3 last:border-0"
-                >
-                  <Checkbox
-                    id={`transfer-deal-${deal.id}`}
-                    checked={selectedSet.has(deal.id)}
-                    disabled={transferring}
-                    onCheckedChange={(checked) =>
-                      setSelectedIds((current) =>
-                        checked
-                          ? [...current.filter((id) => id !== deal.id), deal.id]
-                          : current.filter((id) => id !== deal.id)
-                      )
-                    }
-                  />
-                  <Label
-                    htmlFor={`transfer-deal-${deal.id}`}
-                    className="min-w-0 flex-1 flex-col items-start gap-1"
-                  >
-                    <span className="w-full truncate">{deal.title}</span>
-                    <span className="text-muted-foreground w-full truncate text-xs font-normal">
-                      {deal.contact?.name ||
-                        deal.contact?.phone ||
-                        t('noContact')}
-                    </span>
-                  </Label>
-                </div>
-              ))
-            )}
-          </div>
+          <p className="bg-muted/50 border-b p-3 text-sm font-medium">
+            {t('reviewSelected', { count: deals.length })}
+          </p>
+          <ul className="max-h-64 overflow-y-auto">
+            {deals.map((deal) => (
+              <li
+                key={deal.id}
+                className="space-y-1 border-b p-3 last:border-0"
+              >
+                <p className="truncate text-sm font-medium">{deal.title}</p>
+                <p className="text-muted-foreground truncate text-xs">
+                  {deal.contact?.name || deal.contact?.phone || t('noContact')}
+                </p>
+              </li>
+            ))}
+          </ul>
         </div>
 
         <p className="text-muted-foreground text-xs">{t('inboxNotice')}</p>

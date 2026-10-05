@@ -17,6 +17,7 @@ import {
 import type { Deal, PipelineStage } from "@/types";
 import { DealCard } from "./deal-card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { formatCurrency } from "@/lib/currency";
@@ -28,6 +29,14 @@ interface PipelineBoardProps {
   onDealMoved: (dealId: string, newStageId: string) => void;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  selection?: BoardSelection;
+}
+
+interface BoardSelection {
+  selectedDealIds: ReadonlySet<string>;
+  canSelect: boolean;
+  onDealChecked: (dealId: string, checked: boolean) => void;
+  onStageChecked: (stageId: string, checked: boolean) => void;
 }
 
 export function PipelineBoard({
@@ -36,6 +45,7 @@ export function PipelineBoard({
   onDealMoved,
   onAddDeal,
   onEditDeal,
+  selection,
 }: PipelineBoardProps) {
   const { defaultCurrency } = useAuth();
   const [activeDealId, setActiveDealId] = useState<string | null>(null);
@@ -64,15 +74,17 @@ export function PipelineBoard({
   );
 
   const activeDeal = activeDealId
-    ? deals.find((d) => d.id === activeDealId) ?? null
+    ? (deals.find((d) => d.id === activeDealId) ?? null)
     : null;
 
   function handleDragStart(event: DragStartEvent) {
+    if (selection) return;
     setActiveDealId(String(event.active.id));
   }
 
   function handleDragEnd(event: DragEndEvent) {
     setActiveDealId(null);
+    if (selection) return;
     const { active, over } = event;
     if (!over) return;
     const dealId = String(active.id);
@@ -119,6 +131,7 @@ export function PipelineBoard({
               currency={defaultCurrency}
               onAddDeal={onAddDeal}
               onEditDeal={onEditDeal}
+              selection={selection}
             />
           );
         })}
@@ -193,6 +206,7 @@ function StageColumn({
   currency,
   onAddDeal,
   onEditDeal,
+  selection,
 }: {
   stage: PipelineStage;
   deals: Deal[];
@@ -200,9 +214,16 @@ function StageColumn({
   currency: string;
   onAddDeal: (stageId: string) => void;
   onEditDeal: (deal: Deal) => void;
+  selection?: BoardSelection;
 }) {
   const t = useTranslations("Pipelines.board");
-  const { setNodeRef, isOver } = useDroppable({ id: stage.id });
+  const { setNodeRef, isOver } = useDroppable({
+    id: stage.id,
+    disabled: !!selection,
+  });
+  const selectedCount = deals.filter((deal) =>
+    selection?.selectedDealIds.has(deal.id),
+  ).length;
 
   return (
     // On mobile each column is `w-[85vw]` (with a reasonable min/max)
@@ -211,21 +232,34 @@ function StageColumn({
     // restore the flex-1 share-the-row behavior. The droppable ref is
     // on the inner messages region below — intentionally NOT here, so
     // a drag over the column header doesn't highlight the whole column.
-    <div className="flex w-[85vw] min-w-[260px] max-w-[320px] shrink-0 snap-start flex-col rounded-xl border border-border bg-card/60 p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:basis-[260px] lg:shrink lg:snap-none">
+    <div className="border-border bg-card/60 flex w-[85vw] max-w-[320px] min-w-[260px] shrink-0 snap-start flex-col rounded-xl border p-4 lg:w-auto lg:max-w-none lg:flex-1 lg:shrink lg:basis-[260px] lg:snap-none">
       {/* 3px colored top border — sits above the column's padding */}
       <div
         className="-mx-4 -mt-4 h-[3px] rounded-t-xl"
         style={{ backgroundColor: stage.color }}
       />
       <div className="flex items-center justify-between pt-3">
-        <h3 className="truncate text-sm font-semibold text-foreground">
+        {selection && (
+          <Checkbox
+            aria-label={t("selectAllInStage", { name: stage.name })}
+            title={t("selectAllInStage", { name: stage.name })}
+            checked={deals.length > 0 && selectedCount === deals.length}
+            indeterminate={selectedCount > 0 && selectedCount < deals.length}
+            disabled={!selection.canSelect || deals.length === 0}
+            onCheckedChange={(checked) =>
+              selection.onStageChecked(stage.id, checked)
+            }
+            className="mr-2"
+          />
+        )}
+        <h3 className="text-foreground min-w-0 flex-1 truncate text-sm font-semibold">
           {stage.name}
         </h3>
-        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {deals.length}
+        <span className="bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium">
+          {selection ? `${selectedCount}/${deals.length}` : deals.length}
         </span>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-muted-foreground text-xs">
         {formatCurrency(totalValue, currency)}
       </p>
 
@@ -233,13 +267,13 @@ function StageColumn({
         ref={setNodeRef}
         className={`mt-3 flex flex-1 flex-col gap-2 rounded-lg transition-all ${
           isOver
-            ? "bg-primary/5 outline outline-2 outline-dashed outline-primary outline-offset-2"
+            ? "bg-primary/5 outline-primary outline outline-2 outline-offset-2 outline-dashed"
             : ""
         }`}
       >
         {deals.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center rounded-lg border-2 border-dashed border-border py-10 text-xs text-muted-foreground">
-            {t("dropDealHere")}
+          <div className="border-border text-muted-foreground flex flex-1 items-center justify-center rounded-lg border-2 border-dashed py-10 text-xs">
+            {selection ? t("noLeadsHere") : t("dropDealHere")}
           </div>
         ) : (
           deals.map((deal) => (
@@ -248,6 +282,7 @@ function StageColumn({
               deal={deal}
               stage={stage}
               onEdit={onEditDeal}
+              selection={selection}
             />
           ))
         )}
@@ -257,7 +292,7 @@ function StageColumn({
         variant="ghost"
         size="sm"
         onClick={() => onAddDeal(stage.id)}
-        className="mt-3 w-full justify-start border border-dashed border-border bg-transparent text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground"
+        className="border-border text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground mt-3 w-full justify-start border border-dashed bg-transparent"
       >
         <Plus className="mr-1 h-3 w-3" />
         {t("addDeal")}
@@ -270,23 +305,43 @@ function DraggableDealCard({
   deal,
   stage,
   onEdit,
+  selection,
 }: {
   deal: Deal;
   stage: PipelineStage;
   onEdit: (deal: Deal) => void;
+  selection?: BoardSelection;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: deal.id,
+    disabled: !!selection,
   });
 
   return (
     <div
       ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      style={{ opacity: isDragging ? 0.3 : 1, touchAction: "none" }}
+      {...(!selection ? listeners : undefined)}
+      {...(!selection ? attributes : undefined)}
+      style={{
+        opacity: isDragging ? 0.3 : 1,
+        touchAction: selection ? "auto" : "none",
+      }}
     >
-      <DealCard deal={deal} stage={stage} onEdit={onEdit} />
+      <DealCard
+        deal={deal}
+        stage={stage}
+        onEdit={onEdit}
+        selection={
+          selection
+            ? {
+                checked: selection.selectedDealIds.has(deal.id),
+                disabled: !selection.canSelect,
+                onCheckedChange: (checked) =>
+                  selection.onDealChecked(deal.id, checked),
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
