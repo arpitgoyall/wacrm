@@ -1,6 +1,5 @@
 'use client';
 
-import { Clock } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCurrentTime } from '@/hooks/use-current-time';
 import { daysSinceCreation } from '@/lib/created-age';
@@ -30,11 +29,10 @@ export function CreatedAge({ createdAt, className }: CreatedAgeProps) {
         }),
       })}
       className={cn(
-        'text-muted-foreground inline-flex items-center gap-1 text-xs whitespace-nowrap',
+        'text-muted-foreground text-[10px] leading-none whitespace-nowrap',
         className
       )}
     >
-      <Clock className="size-3 shrink-0" aria-hidden="true" />
       {t('daysAgo', { count: days })}
     </time>
   );

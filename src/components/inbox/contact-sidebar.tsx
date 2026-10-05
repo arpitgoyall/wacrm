@@ -20,7 +20,6 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { useTranslations } from "next-intl";
-import { CreatedAge } from "@/components/created-age";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -151,7 +150,6 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
             <h3 className="mt-3 text-sm font-semibold text-foreground">
               {displayName}
             </h3>
-            <CreatedAge createdAt={contact.created_at} className="mt-1" />
             {contact.company && (
               <p className="text-xs text-muted-foreground">{contact.company}</p>
             )}
@@ -240,7 +238,6 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                     <p className="text-sm font-medium text-foreground">
                       {deal.title}
                     </p>
-                    <CreatedAge createdAt={deal.created_at} className="mt-1" />
                     <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
                       <span>
                         {deal.currency ?? "$"}

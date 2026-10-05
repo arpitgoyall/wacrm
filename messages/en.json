@@ -1,7 +1,6 @@
 {
   "CreatedAge": {
-    "label": "Age",
-    "daysAgo": "Created {count, plural, =1 {1 day} other {# days}} ago",
+    "daysAgo": "{count, plural, =1 {1 day} other {# days}} ago",
     "createdOn": "Created on {date}"
   },
   "LoginPage": {

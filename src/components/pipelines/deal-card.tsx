@@ -118,11 +118,6 @@ export function DealCard({
         )}
       </div>
 
-      <CreatedAge
-        createdAt={deal.created_at}
-        className="border-border/50 bg-background/50 mt-2 rounded-full border px-2 py-0.5 text-[11px]"
-      />
-
       {/* Contact row */}
       <div className="mt-2 flex items-center gap-2">
         <span className="bg-muted text-foreground flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold">
@@ -185,16 +180,17 @@ export function DealCard({
         </svg>
       </Link>
 
-      {assigneeLabel && (
-        <div className="mt-2 flex items-center justify-end">
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <CreatedAge createdAt={deal.created_at} />
+        {assigneeLabel && (
           <span
             title={assigneeLabel}
-            className="bg-primary/15 text-primary flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold"
+            className="bg-primary/15 text-primary ml-auto flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold"
           >
             {initials(assigneeLabel)}
           </span>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

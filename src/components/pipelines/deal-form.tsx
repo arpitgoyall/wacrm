@@ -39,7 +39,6 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslations } from 'next-intl';
-import { CreatedAge } from '@/components/created-age';
 
 interface DealFormProps {
   open: boolean;
@@ -314,7 +313,6 @@ export function DealForm({
             <SheetTitle className="text-popover-foreground">
               {deal ? t('editDeal') : t('newDeal')}
             </SheetTitle>
-            {deal && <CreatedAge createdAt={deal.created_at} />}
           </SheetHeader>
 
           <div className="flex-1 space-y-4 overflow-y-auto p-4">

@@ -1,7 +1,6 @@
 {
   "CreatedAge": {
-    "label": "생성 후 경과",
-    "daysAgo": "{count}일 전에 생성됨",
+    "daysAgo": "{count}일 전",
     "createdOn": "생성 일시: {date}"
   },
   "LoginPage": {
