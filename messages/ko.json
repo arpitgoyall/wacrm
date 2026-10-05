@@ -1,4 +1,9 @@
 {
+  "CreatedAge": {
+    "label": "생성 후 경과",
+    "daysAgo": "{count}일 전에 생성됨",
+    "createdOn": "생성 일시: {date}"
+  },
   "LoginPage": {
     "titleAccept": "로그인하여 수락하기",
     "titleWelcome": "다시 오신 것을 환영합니다",
@@ -540,6 +545,7 @@
       "managePipelines": "파이프라인 관리",
       "addPipeline": "파이프라인 추가",
       "addDeal": "딜 추가",
+      "bulkTransfer": "일괄 이관",
       "createdFrom": "생성일 시작",
       "createdTo": "생성일 종료",
       "allAgents": "모든 담당자",
@@ -555,10 +561,31 @@
       "creating": "만드는 중...",
       "createPipelineBtn": "파이프라인 만들기",
       "toastFailedLoadPipelines": "파이프라인을 불러오지 못했습니다",
+      "toastFailedLoadAgents": "담당자를 불러오지 못했습니다",
+      "toastFailedLoadDeals": "딜을 불러오지 못했습니다",
       "toastFailedMoveDeal": "딜을 이동하지 못했습니다",
       "toastFailedCreatePipeline": "파이프라인을 만들지 못했습니다",
       "toastPipelineCreated": "파이프라인이 생성되었습니다",
       "toastNotLinkedToAccount": "프로필이 계정에 연결되어 있지 않습니다."
+    },
+    "transfer": {
+      "title": "리드 일괄 이관",
+      "description": "담당자를 선택하고 현재 파이프라인과 필터에 해당하는 리드를 선택하세요.",
+      "fromAgent": "기존 담당자",
+      "toAgent": "새 담당자",
+      "selectAgent": "담당자 선택",
+      "selectAll": "해당 리드 모두 선택",
+      "selectBatch": "해당 리드 중 처음 1,000개 선택",
+      "selectedCount": "{total}개 중 {selected}개 선택",
+      "noLeads": "현재 필터에 해당하는 이 담당자의 리드가 없습니다.",
+      "noContact": "연락처 없음",
+      "inboxNotice": "연결된 연락처와 해당 연락처의 모든 받은 편지함 대화도 새 담당자에게 이관됩니다. 다른 딜이 공유하는 대화도 포함됩니다.",
+      "batchLimit": "한 번에 최대 1,000개의 리드를 선택하세요.",
+      "cancel": "취소",
+      "transferring": "이관 중...",
+      "transferCount": "리드 {count}개 이관",
+      "failed": "리드를 이관하지 못했습니다. 다시 시도하세요.",
+      "success": "리드 {deals}개와 받은 편지함 대화 {conversations}개를 이관했습니다."
     },
     "board": {
       "dropDealHere": "여기에 딜을 놓으세요",
@@ -567,6 +594,7 @@
     "card": {
       "noContact": "연락처 없음",
       "callContact": "연락처에 전화",
+      "openWhatsAppInbox": "WhatsApp 받은 편지함 열기",
       "won": "성사",
       "lost": "실패"
     },

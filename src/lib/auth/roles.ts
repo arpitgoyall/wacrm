@@ -69,7 +69,10 @@ export const TEAM_TYPES: readonly TeamType[] = ["sales", "support"] as const;
 
 /** Type-narrow an unknown string into a valid `TeamType`. */
 export function isTeamType(value: unknown): value is TeamType {
-  return typeof value === "string" && (TEAM_TYPES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (TEAM_TYPES as readonly string[]).includes(value)
+  );
 }
 
 // ============================================================
@@ -122,6 +125,11 @@ export function canViewOnly(role: AccountRole): boolean {
  * these two in lockstep if either changes.
  */
 export function canDeleteContacts(role: AccountRole): boolean {
+  return hasMinRole(role, "admin");
+}
+
+/** Owner / admin (manager): transfer leads and their inbox assignments. */
+export function canTransferDeals(role: AccountRole): boolean {
   return hasMinRole(role, "admin");
 }
 

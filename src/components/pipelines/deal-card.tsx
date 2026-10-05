@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Calendar, Check, PhoneCall, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
+import { CreatedAge } from "@/components/created-age";
 
 interface DealCardProps {
   deal: Deal;
@@ -81,6 +82,11 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
           </span>
         )}
       </div>
+
+      <CreatedAge
+        createdAt={deal.created_at}
+        className="mt-2 rounded-full border border-border/50 bg-background/50 px-2 py-0.5 text-[11px]"
+      />
 
       {/* Contact row */}
       <div className="mt-2 flex items-center gap-2">

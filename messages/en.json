@@ -1,4 +1,9 @@
 {
+  "CreatedAge": {
+    "label": "Age",
+    "daysAgo": "Created {count, plural, =1 {1 day} other {# days}} ago",
+    "createdOn": "Created on {date}"
+  },
   "LoginPage": {
     "titleAccept": "Sign in to accept",
     "titleWelcome": "Welcome back",
@@ -540,6 +545,7 @@
       "managePipelines": "Manage Pipelines",
       "addPipeline": "Add Pipeline",
       "addDeal": "Add Deal",
+      "bulkTransfer": "Bulk Transfer",
       "createdFrom": "Created from",
       "createdTo": "Created to",
       "allAgents": "All agents",
@@ -555,10 +561,31 @@
       "creating": "Creating...",
       "createPipelineBtn": "Create Pipeline",
       "toastFailedLoadPipelines": "Failed to load pipelines",
+      "toastFailedLoadAgents": "Failed to load agents",
+      "toastFailedLoadDeals": "Failed to load deals",
       "toastFailedMoveDeal": "Failed to move deal",
       "toastFailedCreatePipeline": "Failed to create pipeline",
       "toastPipelineCreated": "Pipeline created",
       "toastNotLinkedToAccount": "Your profile is not linked to an account."
+    },
+    "transfer": {
+      "title": "Bulk transfer leads",
+      "description": "Choose agents and select leads from the current pipeline and filters.",
+      "fromAgent": "From agent",
+      "toAgent": "To agent",
+      "selectAgent": "Select an agent",
+      "selectAll": "Select all matching leads",
+      "selectBatch": "Select the first 1,000 matching leads",
+      "selectedCount": "{selected} of {total} selected",
+      "noLeads": "No leads assigned to this agent match the current filters.",
+      "noContact": "No contact",
+      "inboxNotice": "Linked contacts and all their inbox conversations will also move to the receiving agent, including conversations shared by other deals.",
+      "batchLimit": "Select up to 1,000 leads per transfer.",
+      "cancel": "Cancel",
+      "transferring": "Transferring...",
+      "transferCount": "Transfer {count} leads",
+      "failed": "Failed to transfer leads. Please try again.",
+      "success": "Transferred {deals} leads and reassigned {conversations} inbox conversations."
     },
     "board": {
       "dropDealHere": "Drop a deal here",
@@ -579,6 +606,7 @@
       "contact": "Contact",
       "selectContact": "Select a contact",
       "callContact": "Call contact",
+      "linkToConversation": "Link to conversation",
       "value": "Value",
       "currency": "Currency",
       "expectedCloseDate": "Expected Close Date",

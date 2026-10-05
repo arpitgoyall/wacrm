@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { loadPipelineDeals } from '@/lib/pipelines/load-deals';
 import type { Pipeline, PipelineStage, Deal, Profile } from '@/types';
 import { PipelineBoard } from '@/components/pipelines/pipeline-board';
 import { PipelineSettings } from '@/components/pipelines/pipeline-settings';
 import { DealForm } from '@/components/pipelines/deal-form';
+import { BulkTransferDialog } from '@/components/pipelines/bulk-transfer-dialog';
 import { PipelineAnalytics } from '@/components/pipelines/pipeline-analytics';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,7 +27,13 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { GitBranch, Plus, ChevronDown, Settings } from 'lucide-react';
+import {
+  GitBranch,
+  Plus,
+  ChevronDown,
+  Settings,
+  ArrowRightLeft,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useCan } from '@/hooks/use-can';
 import { useAuth } from '@/hooks/use-auth';
@@ -51,7 +59,8 @@ export default function PipelinesPage() {
   const supabase = createClient();
   const canEditSettings = useCan('edit-settings');
   const canCreateDeals = useCan('send-messages');
-  const { accountId, isOwner } = useAuth();
+  const canTransferDeals = useCan('transfer-deals');
+  const { accountId } = useAuth();
 
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [selectedPipelineId, setSelectedPipelineId] = useState<string>('');
@@ -68,6 +77,7 @@ export default function PipelinesPage() {
   const [newPipelineName, setNewPipelineName] = useState('');
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bulkTransferOpen, setBulkTransferOpen] = useState(false);
 
   // Deal form state is lifted here so both the top-bar "Add Deal" and
   // the per-column "+" trigger the same Sheet.
@@ -104,60 +114,35 @@ export default function PipelinesPage() {
 
   const loadDeals = useCallback(
     async (pipelineId: string) => {
-      const { data } = await supabase
-        .from('deals')
-        .select(
-          '*, contact:contacts(*), assignee:profiles!deals_assigned_to_fkey(*)'
-        )
-        .eq('pipeline_id', pipelineId)
-        .order('created_at', { ascending: false });
-      const rows = (data ?? []) as Deal[];
-      const contactIds = [
-        ...new Set(
-          rows.flatMap((deal) => (deal.contact_id ? [deal.contact_id] : []))
-        ),
-      ];
-      if (contactIds.length === 0) return rows;
-
-      const { data: conversations } = await supabase
-        .from('conversations')
-        .select('id, contact_id')
-        .in('contact_id', contactIds)
-        .order('last_message_at', { ascending: false });
-      const conversationByContact = new Map<string, string>();
-      for (const conversation of conversations ?? []) {
-        if (
-          conversation.contact_id &&
-          !conversationByContact.has(conversation.contact_id)
-        ) {
-          conversationByContact.set(conversation.contact_id, conversation.id);
-        }
+      try {
+        return await loadPipelineDeals(supabase, pipelineId);
+      } catch (error) {
+        console.error('Failed to load deals:', error);
+        toast.error(t('toastFailedLoadDeals'));
+        return [];
       }
-      return rows.map((deal) => ({
-        ...deal,
-        conversation_id: deal.contact_id
-          ? conversationByContact.get(deal.contact_id)
-          : undefined,
-      }));
     },
-    [supabase]
+    [supabase, t]
   );
 
   useEffect(() => {
-    if (!isOwner || !accountId) return;
+    if (!canTransferDeals || !accountId) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('account_id', accountId)
         .order('full_name');
-      if (!cancelled) setAgents((data ?? []) as Profile[]);
+      if (!cancelled) {
+        setAgents((data ?? []) as Profile[]);
+        if (error) toast.error(t('toastFailedLoadAgents'));
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [accountId, isOwner, supabase]);
+  }, [accountId, canTransferDeals, supabase, t]);
 
   const seedDefaultPipeline =
     useCallback(async (): Promise<Pipeline | null> => {
@@ -374,10 +359,15 @@ export default function PipelinesPage() {
 
   const selectedPipeline = pipelines.find((p) => p.id === selectedPipelineId);
   const filteredDeals = useMemo(() => {
-    if (!isOwner) return deals;
+    // A pipeline switch can render before its fetch completes. Keep the
+    // previous pipeline's leads out of the transfer selection in that gap.
+    const pipelineDeals = deals.filter(
+      (deal) => deal.pipeline_id === selectedPipelineId
+    );
+    if (!canTransferDeals) return pipelineDeals;
     const from = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
     const to = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null;
-    return deals.filter((deal) => {
+    return pipelineDeals.filter((deal) => {
       const createdAt = new Date(deal.created_at).getTime();
       return (
         (from === null || createdAt >= from) &&
@@ -386,7 +376,14 @@ export default function PipelinesPage() {
           selectedAgentIds.includes(deal.assigned_to ?? ''))
       );
     });
-  }, [deals, isOwner, dateFrom, dateTo, selectedAgentIds]);
+  }, [
+    deals,
+    selectedPipelineId,
+    canTransferDeals,
+    dateFrom,
+    dateTo,
+    selectedAgentIds,
+  ]);
 
   if (loading) {
     return (
@@ -458,7 +455,21 @@ export default function PipelinesPage() {
           </DropdownMenu>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canTransferDeals && (
+            <Button
+              variant="outline"
+              disabled={
+                !selectedPipelineId ||
+                agents.length === 0 ||
+                filteredDeals.length === 0
+              }
+              onClick={() => setBulkTransferOpen(true)}
+            >
+              <ArrowRightLeft className="mr-1 h-4 w-4" />
+              {t('bulkTransfer')}
+            </Button>
+          )}
           <GatedButton
             variant="outline"
             canAct={canEditSettings}
@@ -482,7 +493,7 @@ export default function PipelinesPage() {
         </div>
       </div>
 
-      {isOwner && pipelines.length > 0 && (
+      {canTransferDeals && pipelines.length > 0 && (
         <div className="border-border bg-card flex flex-wrap items-end gap-3 rounded-lg border p-3">
           <div className="grid gap-1">
             <Label htmlFor="deals-date-from" className="text-xs">
@@ -646,6 +657,18 @@ export default function PipelinesPage() {
       )}
 
       {/* Deal Form (Sheet) */}
+      {bulkTransferOpen && canTransferDeals && (
+        <BulkTransferDialog
+          key={`${accountId}:${selectedPipelineId}`}
+          deals={filteredDeals}
+          agents={agents}
+          initialSourceId={
+            selectedAgentIds.length === 1 ? selectedAgentIds[0] : undefined
+          }
+          onOpenChange={setBulkTransferOpen}
+          onTransferred={refreshDeals}
+        />
+      )}
       <DealForm
         open={dealFormOpen}
         onOpenChange={setDealFormOpen}

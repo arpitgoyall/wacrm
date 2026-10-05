@@ -69,3 +69,6 @@ jobs:
       # just the absence of an error.
       - name: Verify the resulting schema
         run: supabase db query --local --file supabase/ci/verify-schema.sql
+
+      - name: Verify atomic lead and inbox transfers
+        run: supabase db query --local --file supabase/ci/verify-bulk-transfer.sql

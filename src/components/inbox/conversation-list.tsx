@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/use-auth';
+import { CreatedAge } from '@/components/created-age';
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -890,6 +891,9 @@ function ConversationItem({
             )}
           </div>
         </div>
+        {contact && (
+          <CreatedAge createdAt={contact.created_at} className="mt-1 text-[10px]" />
+        )}
         {showAssignee && assigneeName && (
           <p className="text-muted-foreground mt-1 truncate text-[10px]">
             {t('assignedTo', { name: assigneeName })}

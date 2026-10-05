@@ -42,6 +42,7 @@ import {
   Megaphone,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import { CreatedAge } from '@/components/created-age';
 
 interface ContactDetailViewProps {
   open: boolean;
@@ -405,6 +406,7 @@ export function ContactDetailView({
                   <SheetDescription className="text-muted-foreground text-xs mt-0.5">
                     {t('contactDetailsDesc')}
                   </SheetDescription>
+                  <CreatedAge createdAt={contact.created_at} className="mt-1" />
                   <div className="flex flex-wrap items-center gap-3 mt-1.5 text-xs text-muted-foreground">
                     <button
                       onClick={copyPhone}
@@ -741,6 +743,7 @@ export function ContactDetailView({
                             </span>
                           )}
                         </div>
+                        <CreatedAge createdAt={deal.created_at} className="mt-1.5" />
                         <div className="mt-1.5 flex items-center justify-between text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
                             <DollarSign className="size-3" />

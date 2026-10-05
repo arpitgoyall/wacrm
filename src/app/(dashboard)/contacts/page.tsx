@@ -59,6 +59,7 @@ import { useCan } from '@/hooks/use-can';
 import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
 import { useTranslations } from 'next-intl';
+import { CreatedAge } from '@/components/created-age';
 
 const PAGE_SIZE = 25;
 
@@ -82,6 +83,7 @@ const DEFAULT_CONTACT_COLUMNS: ContactColumnId[] = CONTACT_COLUMNS.map((column) 
 
 export default function ContactsPage() {
   const t = useTranslations('Contacts.page');
+  const tAge = useTranslations('CreatedAge');
   const supabase = createClient();
   const { accountId } = useAuth();
   const canEdit = useCan('send-messages');
@@ -753,13 +755,14 @@ export default function ContactsPage() {
                   {column.label ?? t(`tableColumns.${column.labelKey}`)}
                 </TableHead>
               ))}
+              <TableHead className="text-muted-foreground">{tAge('label')}</TableHead>
               <TableHead className="text-muted-foreground w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow className="border-border">
-                <TableCell colSpan={visibleDisplayColumns.length + 2} className="text-center py-12">
+                <TableCell colSpan={visibleDisplayColumns.length + 3} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="size-6 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">{t('loading')}</p>
@@ -768,7 +771,7 @@ export default function ContactsPage() {
               </TableRow>
             ) : contacts.length === 0 ? (
               <TableRow className="border-border">
-                <TableCell colSpan={visibleDisplayColumns.length + 2} className="text-center py-12">
+                <TableCell colSpan={visibleDisplayColumns.length + 3} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="size-8 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
@@ -814,6 +817,9 @@ export default function ContactsPage() {
                       {renderColumnCell(contact, column)}
                     </TableCell>
                   ))}
+                  <TableCell>
+                    <CreatedAge createdAt={contact.created_at} />
+                  </TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger
