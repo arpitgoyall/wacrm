@@ -228,3 +228,8 @@ html[data-theme="rose"] {
     @apply font-sans;
   }
 }
+/* Keep interactive controls discoverable across the app. */
+:where(button, [role="button"]):not(:disabled):not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+

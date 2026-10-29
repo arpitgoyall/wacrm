@@ -29,6 +29,11 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import {
+  buildPeriodReport,
+  type ReportPeriod,
+  type ClickEvent,
+} from './reporting';
 
 // ------------------------------------------------------------
 // Inputs (row shapes pulled from Supabase)
@@ -67,6 +72,7 @@ export interface AdDealRow {
 }
 
 export interface AdInsightRow {
+  date?: string;
   ad_id: string;
   spend: number | string | null;
   impressions?: number | string | null;
@@ -149,6 +155,8 @@ export interface AdPerformance {
 export type AdGroupBy = 'ad' | 'adset' | 'campaign';
 
 export interface AdGroupRow {
+  currency: string | null;
+  cpd: number | null;
   key: string;
   name: string;
   ads: number;
@@ -332,6 +340,8 @@ export function groupAdPerformance(
   if (groupBy === 'ad') {
     return rows.map((r) => ({
       key: r.source_id,
+      currency: r.currency,
+      cpd: r.cpd,
       name: r.label || r.metaName || r.headline || r.source_id,
       ads: 1,
       leads: r.leads,
@@ -383,6 +393,13 @@ export function groupAdPerformance(
   return [...groups.entries()]
     .map(([key, g]) => ({
       key,
+      cpd: g.spend > 0 && g.deals > 0 ? g.spend / g.deals : null,
+      currency:
+        rows.find(
+          (r) =>
+            (groupBy === 'campaign' ? r.campaignId : r.adsetId) ===
+            (key === '__unassigned__' ? null : key)
+        )?.currency ?? null,
       name: g.name,
       ads: g.ads,
       leads: g.leads,
@@ -433,6 +450,7 @@ export interface AdBindingRow {
 }
 
 export interface AdPerformanceResult extends AdPerformance {
+  reporting: ReturnType<typeof buildPeriodReport>;
   sync: AdSyncMeta;
   /** Active flows, for the per-ad routing picker. */
   flows: AdRouteOption[];
@@ -452,7 +470,8 @@ export interface AdPerformanceResult extends AdPerformance {
  * outgrows it this moves to a SQL view or RPC.
  */
 export async function loadAdPerformance(
-  db: SupabaseClient
+  db: SupabaseClient,
+  period: ReportPeriod = { start: '', end: '', currency: 'USD' }
 ): Promise<AdPerformanceResult> {
   const [
     adsRes,
@@ -465,24 +484,24 @@ export async function loadAdPerformance(
     flowsRes,
     automationsRes,
     bindingsRes,
+    clicksRes,
   ] = await Promise.all([
-    db
-      .from('ctwa_ads')
-      .select(
-        'id, source_id, label, headline, body, source_url, source_type, first_seen_at, last_seen_at, campaign_id, adset_id, meta_name, effective_status'
-      ),
-    db
-      .from('contacts')
-      .select('id, ctwa_source_id, created_at')
-      .not('ctwa_source_id', 'is', null),
-    db
-      .from('deals')
-      .select('contact_id, ctwa_source_id, value, status, created_at'),
-    db
-      .from('ctwa_ad_insights')
-      .select(
-        'ad_id, spend, impressions, link_clicks, messaging_started, currency'
-      ),
+    readReportingRows(
+      db,
+      'ctwa_ads',
+      'id, source_id, label, headline, body, source_url, source_type, first_seen_at, last_seen_at, campaign_id, adset_id, meta_name, effective_status'
+    ),
+    readReportingRows(db, 'contacts', 'id, ctwa_source_id, created_at'),
+    readReportingRows(
+      db,
+      'deals',
+      'id, contact_id, ctwa_source_id, value, status, created_at'
+    ),
+    readReportingRows(
+      db,
+      'ctwa_ad_insights',
+      'id, ad_id, date, spend, impressions, link_clicks, messaging_started, currency'
+    ),
     db.from('meta_campaigns').select('campaign_id, name'),
     db.from('meta_adsets').select('adset_id, name'),
     db
@@ -503,6 +522,11 @@ export async function loadAdPerformance(
       .from('ctwa_ad_bindings')
       .select('match_type, match_value, flow_id, automation_id')
       .eq('is_active', true),
+    readReportingRows(
+      db,
+      'ctwa_click_events',
+      'id, contact_id, ad_id, occurred_at'
+    ),
   ]);
 
   if (adsRes.error) throw adsRes.error;
@@ -521,14 +545,31 @@ export async function loadAdPerformance(
     ? []
     : ((adsetsRes.data ?? []) as MetaAdsetRow[]);
 
-  const { rows, summary } = aggregateAdPerformance(
-    (adsRes.data ?? []) as AdRegistryRow[],
+  const reporting = buildPeriodReport(
     (contactsRes.data ?? []) as AdContactRow[],
     (dealsRes.data ?? []) as AdDealRow[],
     insights,
+    (clicksRes.data ?? []) as ClickEvent[],
+    period,
+    Boolean(clicksRes.error || insightsRes.error)
+  );
+  const { rows, summary } = aggregateAdPerformance(
+    (adsRes.data ?? []) as AdRegistryRow[],
+    reporting.contacts,
+    reporting.deals,
+    reporting.insights,
     campaigns,
     adsets
   );
+  if (!reporting.currencyCompatible) {
+    summary.blendedRoas = null;
+    summary.blendedCpl = null;
+    for (const row of rows) {
+      row.roas = null;
+      row.cpl = null;
+      row.cpd = null;
+    }
+  }
 
   const cfg = (cfgRes.data ?? null) as {
     ad_account_id: string | null;
@@ -548,6 +589,7 @@ export async function loadAdPerformance(
     : ((bindingsRes.data ?? []) as AdBindingRow[]);
 
   return {
+    reporting,
     rows,
     summary,
     sync: {
@@ -560,4 +602,23 @@ export async function loadAdPerformance(
     automations,
     bindings,
   };
+}
+
+// Supabase caps each response; page explicitly so larger workspaces are not silently truncated.
+async function readReportingRows(
+  db: SupabaseClient,
+  table: string,
+  columns: string
+) {
+  const rows: unknown[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await db
+      .from(table)
+      .select(columns)
+      .order('id')
+      .range(offset, offset + 999);
+    if (error) return { data: null, error };
+    rows.push(...(data as unknown as Record<string, unknown>[]));
+    if (data.length < 1000) return { data: rows, error: null };
+  }
 }
