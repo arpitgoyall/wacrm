@@ -11,7 +11,8 @@ function shift(date: string, days: number) {
 export async function syncWorkspaceConnection(
   accountId: string,
   id: string,
-  backfill = false
+  backfill = false,
+  backfillStart?: string
 ) {
   const db = supabaseAdmin();
   const { connection, token } = await connectionToken(accountId, id);
@@ -92,70 +93,92 @@ export async function syncWorkspaceConnection(
         });
       if (error) throw error;
     }
-    // Read one bounded backfill slice per call; persist its cursor only after all pages succeed.
+    // Each insight request stays within the database reconciliation window.
     const today = new Date().toLocaleDateString('en-CA', {
       timeZone: connection.timezone,
     });
-    const until = backfill
+    if (
+      backfillStart &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(backfillStart) ||
+        !Number.isFinite(Date.parse(`${backfillStart}T00:00:00Z`)) ||
+        new Date(`${backfillStart}T00:00:00Z`).toISOString().slice(0, 10) !==
+          backfillStart ||
+        backfillStart > today ||
+        backfillStart < shift(today, -366))
+    )
+      throw Error('Choose a historical start date within the last 367 days');
+    let until = backfill
       ? connection.backfill_until || shift(today, -30)
       : today;
-    const since = shift(until, backfill ? -6 : -29);
-    const raw = await graphPages<RawInsightsRow>(
-      `${connection.meta_account_id}/insights`,
-      token,
-      {
-        level: 'ad',
-        time_increment: 1,
-        fields:
-          'ad_id,spend,impressions,inline_link_clicks,actions,account_currency',
-        time_range: { since, until },
-      }
-    );
+    const finalUntil = until;
     const adIds = new Set(eligibleAds.map((a) => String(a.id)));
-    const daily = raw
-      .map(parseInsightsRow)
-      .filter((r): r is NonNullable<typeof r> =>
-        Boolean(r && adIds.has(r.adId))
-      )
-      .map((r) => ({
-        account_id: accountId,
-        connection_id: id,
-        ad_id: r.adId,
-        date: r.date,
-        spend: r.spend,
-        impressions: r.impressions,
-        clicks: r.linkClicks,
-        messaging: r.messagingStarted,
-      }));
-    const { error: reconcileError } = await db.rpc('ads_replace_insights', {
-      p_account: accountId,
-      p_connection: id,
-      p_start: since,
-      p_end: until,
-      p_rows: daily,
-    });
-    if (reconcileError) throw reconcileError;
-    const { error } = await db
-      .from('ads_connections')
-      .update({
-        synced_at: new Date().toISOString(),
-        history_start:
-          connection.history_start && connection.history_start < since
-            ? connection.history_start
-            : since,
-        backfill_until: backfill ? shift(since, -1) : connection.backfill_until,
-        status: 'connected',
-        error: null,
-      })
-      .eq('id', id)
-      .eq('account_id', accountId);
-    if (error) throw error;
+    let firstSince = '';
+    let rows = 0;
+    do {
+      const since = shift(until, backfillStart ? -29 : backfill ? -6 : -29);
+      const raw = await graphPages<RawInsightsRow>(
+        `${connection.meta_account_id}/insights`,
+        token,
+        {
+          level: 'ad',
+          time_increment: 1,
+          fields:
+            'ad_id,spend,impressions,inline_link_clicks,actions,account_currency',
+          time_range: { since, until },
+        }
+      );
+      const daily = raw
+        .map(parseInsightsRow)
+        .filter((r): r is NonNullable<typeof r> =>
+          Boolean(r && adIds.has(r.adId))
+        )
+        .map((r) => ({
+          account_id: accountId,
+          connection_id: id,
+          ad_id: r.adId,
+          date: r.date,
+          spend: r.spend,
+          impressions: r.impressions,
+          clicks: r.linkClicks,
+          messaging: r.messagingStarted,
+        }));
+      const { error: reconcileError } = await db.rpc('ads_replace_insights', {
+        p_account: accountId,
+        p_connection: id,
+        p_start: since,
+        p_end: until,
+        p_rows: daily,
+      });
+      if (reconcileError) throw reconcileError;
+      const historyStart =
+        connection.history_start && connection.history_start < since
+          ? connection.history_start
+          : since;
+      const { error } = await db
+        .from('ads_connections')
+        .update({
+          synced_at: new Date().toISOString(),
+          history_start: historyStart,
+          backfill_until: backfill ? shift(since, -1) : connection.backfill_until,
+          status: 'connected',
+          error: null,
+        })
+        .eq('id', id)
+        .eq('account_id', accountId);
+      if (error) throw error;
+      connection.history_start = historyStart;
+      connection.backfill_until = backfill
+        ? shift(since, -1)
+        : connection.backfill_until;
+      firstSince = since;
+      rows += daily.length;
+      until = shift(since, -1);
+    } while (backfill && backfillStart && firstSince > backfillStart);
     return {
       entities: records.length,
-      days: backfill ? 7 : 30,
-      rows: daily.length,
-      since,
-      until,
+      rows,
+      since: firstSince,
+      until: finalUntil,
     };
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Meta sync failed';

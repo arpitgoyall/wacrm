@@ -39,6 +39,23 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('parseGeneration', () => {
+  it('routes OpenRouter replies through its chat endpoint with the selected model', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse({
+      choices: [{ message: { content: 'Hello' } }],
+      usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const result = await generateReply({
+      config: config({ provider: 'openrouter', model: 'example/free:free' }),
+      systemPrompt: 'sys', messages: [{ role: 'user', content: 'Hi' }],
+    })
+    const [url, options] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions')
+    expect(JSON.parse(options.body)).toMatchObject({ model: 'example/free:free', max_tokens: 1024 })
+    expect(options.headers.Authorization).toBe('Bearer sk-test')
+    expect(result.text).toBe('Hello')
+    expect(result.usage?.totalTokens).toBe(3)
+  })
   it('returns text with no handoff', () => {
     expect(parseGeneration('Hello there')).toEqual({
       text: 'Hello there',

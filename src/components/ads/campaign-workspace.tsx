@@ -13,16 +13,7 @@ import {
   SlidersHorizontal,
   MessageCircle,
 } from 'lucide-react';
-import {
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from 'recharts';
+import { EChart } from '@/components/charts/echart';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { formatAdMoney as formatCurrency } from '@/lib/ads/workspace-report';
@@ -223,7 +214,7 @@ export default function CampaignWorkspace() {
   };
   const thumbnail = (entity?: CampaignEntity) => {
     const creative = object(entity?.data.creative);
-    return String(creative.thumbnail_url || creative.image_url || '');
+    return String(creative.image_url || creative.thumbnail_url || '');
   };
   const previewFor = (id: string) => {
     const e = data?.entities.find((e) => e.meta_id === id);
@@ -240,36 +231,38 @@ export default function CampaignWorkspace() {
   };
 
   return (
-    <div className="space-y-5" aria-busy={loading}>
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex gap-3">
-          <div className="bg-primary/10 text-primary flex h-11 w-11 items-center justify-center rounded-xl">
-            <Megaphone size={22} />
+    <div className="space-y-6 pb-10" aria-busy={loading}>
+      <header className="border-border bg-card relative overflow-hidden rounded-[1.75rem] border px-5 py-6 sm:px-7 sm:py-7">
+        <div className="relative flex flex-wrap items-center justify-between gap-5">
+          <div className="flex items-center gap-4">
+            <div className="bg-primary text-primary-foreground flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-sm">
+              <Megaphone size={23} strokeWidth={1.8} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight sm:text-[1.8rem]">
+                Campaign workspace
+              </h1>
+              <p className="text-muted-foreground mt-1 text-sm">
+                From ad spend to conversations, qualified leads, and sales.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Campaign workspace
-            </h1>
-            <p className="text-muted-foreground mt-1 text-sm">
-              Connect advertising to conversations, qualified leads, and sales.
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" disabled={busy || loading} onClick={load}>
-            <RefreshCw size={16} />
-            Refresh
-          </Button>
-          {canManage && data?.connection && (
-            <Button onClick={() => setWizard({ existing: null })}>
-              <Plus size={16} />
-              Create campaign
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" disabled={busy || loading} onClick={load}>
+              <RefreshCw size={16} />
+              Refresh
             </Button>
-          )}
+            {canManage && data?.connection && (
+              <Button onClick={() => setWizard({ existing: null })}>
+                <Plus size={16} />
+                Create campaign
+              </Button>
+            )}
+          </div>
         </div>
       </header>
       <nav
-        className="border-border flex gap-1 overflow-x-auto border-b"
+        className="border-border bg-card flex gap-1 overflow-x-auto rounded-2xl border p-1.5"
         aria-label="Campaign workspace"
       >
         {tabs.map((item) => (
@@ -278,10 +271,10 @@ export default function CampaignWorkspace() {
             type="button"
             aria-current={item === tab ? 'page' : undefined}
             className={cn(
-              'shrink-0 border-b-2 px-4 py-3 text-sm transition-colors',
+              'focus-visible:outline-primary shrink-0 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors focus-visible:outline-2',
               tab === item
-                ? 'border-primary text-primary font-semibold'
-                : 'text-muted-foreground hover:text-foreground border-transparent'
+                ? 'bg-primary text-primary-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
             )}
             onClick={() => setTab(item)}
           >
@@ -311,14 +304,14 @@ export default function CampaignWorkspace() {
       )}
       {data && (
         <>
-          <div className="border-border bg-card flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="text-sm">
+          <div className="border-border bg-card flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3.5 sm:px-5">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <label className="text-muted-foreground text-xs font-medium">
                 Ad account
                 <select
                   className={cn(
                     fieldClass,
-                    'ml-2 inline-block w-auto max-w-64'
+                    'text-foreground ml-3 inline-block w-auto max-w-64 font-medium'
                   )}
                   value={data.connection?.id || ''}
                   onChange={(e) => {
@@ -375,7 +368,7 @@ export default function CampaignWorkspace() {
             </p>
           )}
           {tab !== 'Settings' && data.connection && (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-2xl border p-2 sm:p-2.5">
               <select
                 aria-label="Reporting preset"
                 className={cn(fieldClass, 'w-auto')}
@@ -431,6 +424,43 @@ export default function CampaignWorkspace() {
               )}
             </div>
           )}
+          {tab !== 'Settings' &&
+            data.connection &&
+            (!data.connection.history_start ||
+              range.start < data.connection.history_start) && (
+              <div
+                role="status"
+                className="border-border bg-card flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm"
+              >
+                <span>
+                  {data.connection.history_start
+                    ? `Meta spend has been imported from ${data.connection.history_start}. Load older history for this report to show the full selected period.`
+                    : 'Meta spend has not been imported yet. Sync this ad account to load reporting history.'}
+                </span>
+                {canManage && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      run(() =>
+                        adsRequest('/api/ads/connections', {
+                          action: data.connection!.history_start
+                            ? 'backfill'
+                            : 'sync',
+                          connectionId: data.connection!.id,
+                          start: range.start,
+                        })
+                      )
+                    }
+                  >
+                    {data.connection.history_start
+                      ? 'Load historical spend'
+                      : 'Sync Meta'}
+                  </Button>
+                )}
+              </div>
+            )}
           {!data.connection && tab !== 'Settings' && (
             <div className="border-border rounded-xl border border-dashed px-6 py-16 text-center">
               <MessageCircle className="text-primary mx-auto mb-3" size={32} />
@@ -450,7 +480,7 @@ export default function CampaignWorkspace() {
           )}
           {tab === 'Overview' && report && (
             <>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                 {[
                   [
                     'Spend',
@@ -479,78 +509,135 @@ export default function CampaignWorkspace() {
                 ].map(([label, value, previous, isMoney]) => (
                   <div
                     key={String(label)}
-                    className="border-border bg-card rounded-xl border px-5 py-4"
+                    className={cn(
+                      'relative flex min-h-44 flex-col justify-end overflow-hidden rounded-[1.5rem] border px-5 py-5',
+                      label === 'Spend'
+                        ? 'border-[#123e35] bg-[#123e35] text-white sm:col-span-2'
+                        : 'border-border bg-card'
+                    )}
                   >
-                    <p className="text-muted-foreground text-sm">{label}</p>
-                    <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">
+                    {label === 'Spend' && (
+                      <span className="pointer-events-none absolute -top-12 -right-8 h-36 w-36 rounded-full border border-white/15" />
+                    )}
+                    <p
+                      className={cn(
+                        'relative text-sm',
+                        label === 'Spend'
+                          ? 'text-white/70'
+                          : 'text-muted-foreground'
+                      )}
+                    >
+                      {label === 'Spend' ? 'Total spend' : label}
+                    </p>
+                    <p
+                      className={cn(
+                        'relative mt-2 font-semibold tracking-tight tabular-nums',
+                        label === 'Spend'
+                          ? 'text-4xl [overflow-wrap:anywhere] sm:text-5xl'
+                          : 'text-2xl'
+                      )}
+                    >
                       {value == null
                         ? '—'
                         : isMoney
                           ? currency(Number(value), code)
                           : Number(value).toLocaleString()}
                     </p>
-                    <p className="text-muted-foreground mt-2 text-xs">
+                    <p
+                      className={cn(
+                        'relative mt-2 text-xs',
+                        label === 'Spend'
+                          ? 'text-white/65'
+                          : 'text-muted-foreground'
+                      )}
+                    >
                       {delta(Number(value), Number(previous))}
                     </p>
                   </div>
                 ))}
               </div>
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_330px]">
-                <section className="border-border bg-card min-w-0 rounded-xl border p-5">
-                  <h2 className="font-semibold">
+              <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <section className="border-border bg-card min-w-0 rounded-[1.5rem] border p-5 sm:p-6">
+                  <h2 className="text-lg font-semibold tracking-tight">
                     From spend to qualified interest
                   </h2>
                   <p className="text-muted-foreground mt-1 text-xs">
                     Daily activity in {data.connection?.timezone}. Qualification
                     and sales use their outcome dates.
                   </p>
-                  <div className="mt-5 h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <ComposedChart data={report.daily}>
-                        <XAxis dataKey="date" minTickGap={45} />
-                        <YAxis yAxisId="money" />
-                        <YAxis
-                          yAxisId="count"
-                          orientation="right"
-                          allowDecimals={false}
-                        />
-                        <Tooltip />
-                        <Legend />
-                        <Bar
-                          yAxisId="money"
-                          dataKey="spend"
-                          name={`Spend (${code})`}
-                          fill="#94a3b8"
-                          radius={[3, 3, 0, 0]}
-                        />
-                        <Line
-                          yAxisId="count"
-                          dataKey="qualified"
-                          name="Qualified leads"
-                          stroke="#16a34a"
-                          dot={false}
-                          strokeWidth={2}
-                        />
-                        <Line
-                          yAxisId="count"
-                          dataKey="leads"
-                          name="New CRM leads"
-                          stroke="#3b82f6"
-                          dot={false}
-                        />
-                      </ComposedChart>
-                    </ResponsiveContainer>
+                  <div className="mt-6 h-72">
+                    <EChart
+                      label="Daily spend, qualified leads, and new CRM leads"
+                      option={{
+                        color: ['#38b888', '#16a34a', '#3b82f6'],
+                        grid: { top: 42, right: 42, bottom: 36, left: 50 },
+                        legend: { top: 0, textStyle: { color: '#8b929e' } },
+                        tooltip: { trigger: 'axis' },
+                        xAxis: {
+                          type: 'category',
+                          data: report.daily.map((day) => day.date),
+                          axisLabel: { color: '#8b929e', hideOverlap: true },
+                          axisLine: { show: false },
+                          axisTick: { show: false },
+                        },
+                        yAxis: [
+                          {
+                            type: 'value',
+                            min: 0,
+                            axisLabel: { color: '#8b929e' },
+                            splitLine: {
+                              lineStyle: { color: '#e5e7eb', type: 'dashed' },
+                            },
+                          },
+                          {
+                            type: 'value',
+                            min: 0,
+                            minInterval: 1,
+                            axisLabel: { color: '#8b929e' },
+                            splitLine: { show: false },
+                          },
+                        ],
+                        series: [
+                          {
+                            name: `Spend (${code})`,
+                            type: 'bar',
+                            data: report.daily.map((day) => day.spend),
+                            barMaxWidth: 12,
+                            itemStyle: { borderRadius: [3, 3, 0, 0] },
+                          },
+                          {
+                            name: 'Qualified leads',
+                            type: 'line',
+                            yAxisIndex: 1,
+                            data: report.daily.map((day) => day.qualified),
+                            showSymbol: false,
+                            smooth: 0.25,
+                            lineStyle: { width: 2 },
+                          },
+                          {
+                            name: 'New CRM leads',
+                            type: 'line',
+                            yAxisIndex: 1,
+                            data: report.daily.map((day) => day.leads),
+                            showSymbol: false,
+                            smooth: 0.25,
+                          },
+                        ],
+                      }}
+                    />
                   </div>
                 </section>
-                <section className="border-border bg-card rounded-xl border p-5">
-                  <h2 className="font-semibold">Needs attention</h2>
+                <section className="border-border bg-card rounded-[1.5rem] border p-5 sm:p-6">
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    Needs attention
+                  </h2>
                   <p className="text-muted-foreground mt-1 text-xs">
                     Evidence to investigate before making changes.
                   </p>
-                  <div className="mt-4 space-y-4">
+                  <div className="mt-5 space-y-2">
                     {data.recommendations.slice(0, 3).map((r) => (
                       <button
-                        className="border-border block w-full border-b pb-3 text-left last:border-0"
+                        className="bg-muted/40 hover:bg-muted block w-full rounded-xl px-4 py-3 text-left transition-colors"
                         key={r.id}
                         onClick={() => {
                           setTab('Reports');
@@ -571,9 +658,16 @@ export default function CampaignWorkspace() {
                   </div>
                 </section>
               </div>
-              <section className="border-border rounded-xl border p-5">
-                <h2 className="mb-4 font-semibold">Customer journey</h2>
-                <div className="grid gap-3 sm:grid-cols-4">
+              <section className="border-border bg-card rounded-[1.5rem] border p-5 sm:p-6">
+                <div className="mb-5 flex flex-wrap items-end justify-between gap-2">
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    Customer journey
+                  </h2>
+                  <span className="text-muted-foreground text-xs">
+                    Select a stage to explore contacts
+                  </span>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                   {[
                     ['Ad-sourced leads', report.summary.leads, 'acquired'],
                     [
@@ -595,7 +689,7 @@ export default function CampaignWorkspace() {
                   ].map(([label, value, stage]) => (
                     <button
                       key={label}
-                      className="bg-muted/40 hover:bg-muted rounded-lg p-4 text-left"
+                      className="border-border bg-muted/25 hover:border-primary/35 hover:bg-primary/5 group focus-visible:outline-primary rounded-xl border p-4 text-left transition-colors focus-visible:outline-2"
                       onClick={() => {
                         setJourneyFilter(String(stage));
                         setTab('Lead Quality');
@@ -604,7 +698,7 @@ export default function CampaignWorkspace() {
                       <span className="text-muted-foreground text-xs">
                         {label}
                       </span>
-                      <strong className="mt-2 block text-xl tabular-nums">
+                      <strong className="group-hover:text-primary mt-3 block text-2xl tracking-tight tabular-nums">
                         {value}
                       </strong>
                     </button>
@@ -627,7 +721,20 @@ export default function CampaignWorkspace() {
           )}
           {tab === 'Campaigns' && report && (
             <>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold tracking-tight">
+                    Campaign performance
+                  </h2>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    Explore delivery and outcomes across your account.
+                  </p>
+                </div>
+                <p className="text-muted-foreground text-xs tabular-nums">
+                  {rows.length} items in view
+                </p>
+              </div>
+              <div className="border-border bg-card flex flex-wrap items-center gap-2 rounded-2xl border p-3">
                 <div className="relative min-w-48 flex-1">
                   <Search
                     size={16}
@@ -735,7 +842,7 @@ export default function CampaignWorkspace() {
                   ))}
                 </div>
               )}
-              <div className="border-border bg-card overflow-auto rounded-xl border">
+              <div className="border-border bg-card overflow-auto rounded-[1.5rem] border">
                 {canManage && picked.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2 border-b p-3">
                     <span className="text-sm">{picked.length} selected</span>
@@ -771,7 +878,7 @@ export default function CampaignWorkspace() {
                   </div>
                 )}
                 <table className="w-full min-w-[800px] text-sm">
-                  <thead className="bg-muted/40 text-muted-foreground">
+                  <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
                       {canManage && (
                         <th className="p-3">
@@ -817,7 +924,7 @@ export default function CampaignWorkspace() {
                       return (
                         <tr
                           key={row.id}
-                          className="border-border hover:bg-muted/30 border-t"
+                          className="border-border hover:bg-primary/5 border-t transition-colors"
                         >
                           {canManage && (
                             <td className="p-3">
@@ -847,10 +954,10 @@ export default function CampaignWorkspace() {
                                   height={40}
                                   unoptimized
                                   alt=""
-                                  className="h-10 w-10 rounded-lg object-cover"
+                                  className="h-11 w-11 rounded-xl object-cover"
                                 />
                               ) : (
-                                <span className="bg-muted text-muted-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+                                <span className="bg-muted text-muted-foreground flex h-11 w-11 shrink-0 items-center justify-center rounded-xl">
                                   <Megaphone size={17} />
                                 </span>
                               )}
@@ -944,10 +1051,16 @@ export default function CampaignWorkspace() {
           )}
           {tab === 'Creative Library' && (
             <>
-              <div className="flex items-center justify-between">
-                <p className="text-muted-foreground text-sm">
-                  Review offers and creative results before planning a refresh.
-                </p>
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <h2 className="text-xl font-semibold tracking-tight">
+                    Creative Library
+                  </h2>
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    See what is running, compare results, and plan the next
+                    creative.
+                  </p>
+                </div>
                 {canManage && (
                   <Button onClick={() => openEditor('creative')}>
                     <Plus size={16} />
@@ -964,9 +1077,12 @@ export default function CampaignWorkspace() {
                     return (
                       <button
                         key={e.id}
-                        className="border-border bg-card overflow-hidden rounded-xl border text-left"
+                        className="border-border bg-card hover:border-primary/40 group focus-visible:outline-primary relative overflow-hidden rounded-[1.5rem] border text-left transition-colors focus-visible:outline-2"
                         onClick={() => setSelected(e)}
                       >
+                        <span className="absolute top-3 left-3 z-10 rounded-full bg-black/70 px-2.5 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
+                          {e.status || 'Ad'}
+                        </span>
                         {thumbnail(e) ? (
                           <Image
                             src={thumbnail(e)}
@@ -979,12 +1095,14 @@ export default function CampaignWorkspace() {
                         ) : (
                           <div className="bg-muted aspect-video" />
                         )}
-                        <div className="p-4">
-                          <h3 className="font-semibold">{e.name}</h3>
-                          <p className="text-muted-foreground mt-1 line-clamp-2 text-sm">
+                        <div className="p-5">
+                          <h3 className="group-hover:text-primary leading-snug font-semibold">
+                            {e.name}
+                          </h3>
+                          <p className="text-muted-foreground mt-2 line-clamp-2 min-h-10 text-sm">
                             {String(creative.body || creative.title || '')}
                           </p>
-                          <p className="mt-3 text-sm">
+                          <p className="border-border text-muted-foreground mt-4 border-t pt-4 text-xs tabular-nums">
                             {currency(result?.spend || 0, code)} spend ·{' '}
                             {result?.qualified || 0} qualified ·{' '}
                             {result?.customers || 0} customers
@@ -998,7 +1116,7 @@ export default function CampaignWorkspace() {
                   .map((d) => (
                     <div
                       key={d.id}
-                      className="border-border rounded-xl border p-4"
+                      className="border-border bg-card rounded-[1.5rem] border p-5"
                     >
                       <h3 className="font-semibold">{d.name}</h3>
                       {Boolean(d.data.imageUrl) && (
@@ -1008,7 +1126,7 @@ export default function CampaignWorkspace() {
                           width={480}
                           height={300}
                           unoptimized
-                          className="mt-3 aspect-video w-full rounded-lg object-cover"
+                          className="mt-4 aspect-video w-full rounded-xl object-cover"
                         />
                       )}
                       <p className="text-muted-foreground mt-2 text-sm">
@@ -1052,9 +1170,9 @@ export default function CampaignWorkspace() {
           )}
           {tab === 'Reports' && report && (
             <>
-              <div className="flex flex-wrap justify-between gap-2">
+              <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold">
+                  <h2 className="text-xl font-semibold tracking-tight">
                     Performance and decisions
                   </h2>
                   <p className="text-muted-foreground text-sm">
@@ -1100,7 +1218,7 @@ export default function CampaignWorkspace() {
                   return (
                     <article
                       key={r.id}
-                      className="border-border rounded-xl border p-5"
+                      className="border-border bg-card rounded-[1.5rem] border p-5"
                     >
                       <span className="text-muted-foreground text-xs">
                         {r.category} · {r.sample} observations · directional
@@ -1176,7 +1294,7 @@ export default function CampaignWorkspace() {
                   );
                 })}
               </div>
-              <section className="border-border rounded-xl border p-5">
+              <section className="border-border bg-card rounded-[1.5rem] border p-5">
                 <div className="flex justify-between">
                   <h2 className="font-semibold">Experiments and annotations</h2>
                   {canManage && (

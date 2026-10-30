@@ -30,6 +30,13 @@ export function LeadQuality({
     contact = report?.leads.find((l) => l.id === selected);
   return (
     <div className="space-y-5">
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">Lead quality</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Follow each conversation from first reply through qualification and
+          sale.
+        </p>
+      </div>
       <div className="grid gap-3 sm:grid-cols-4">
         {[
           [
@@ -45,9 +52,14 @@ export function LeadQuality({
           ],
           ['Awaiting follow-up', report?.conversations.awaitingReply || 0],
         ].map(([label, value]) => (
-          <div key={label} className="border-border rounded-xl border p-4">
+          <div
+            key={label}
+            className="border-border bg-card rounded-2xl border p-5"
+          >
             <p className="text-muted-foreground text-xs">{label}</p>
-            <p className="mt-2 text-xl font-semibold">{value}</p>
+            <p className="mt-4 text-2xl font-semibold tracking-tight tabular-nums">
+              {value}
+            </p>
           </div>
         ))}
       </div>
@@ -56,8 +68,10 @@ export function LeadQuality({
         conversation whose last message is from the customer; it does not imply
         a scheduled task is overdue.
       </p>
-      <section className="border-border rounded-xl border p-4">
-        <h2 className="mb-3 font-semibold">Qualification flow completion</h2>
+      <section className="border-border bg-card rounded-[1.5rem] border p-5 sm:p-6">
+        <h2 className="mb-4 text-lg font-semibold tracking-tight">
+          Qualification flow completion
+        </h2>
         <div className="mb-4 grid gap-3 sm:grid-cols-4">
           {[
             ['Started', report?.flowMetrics.started || 0],
@@ -65,7 +79,7 @@ export function LeadQuality({
             ['Timed out', report?.flowMetrics.timedOut || 0],
             ['Follow-up attempts', report?.flowMetrics.followUpAttempts || 0],
           ].map(([label, value]) => (
-            <div key={label} className="bg-muted/40 rounded-lg p-3">
+            <div key={label} className="bg-muted/40 rounded-xl p-4">
               <p className="text-muted-foreground text-xs">{label}</p>
               <p className="mt-1 text-xl font-semibold">{value}</p>
             </div>
@@ -107,7 +121,7 @@ export function LeadQuality({
         <div className="mt-4 overflow-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-muted-foreground text-left">
+              <tr className="bg-muted/40 text-muted-foreground text-left">
                 <th className="p-2 font-medium">Lead</th>
                 <th className="p-2 font-medium">Qualification</th>
                 <th className="p-2 font-medium">Reason</th>
@@ -134,7 +148,10 @@ export function LeadQuality({
                       : l.qualification?.status === filter)
                 )
                 .map((l) => (
-                  <tr key={l.id} className="border-border border-t">
+                  <tr
+                    key={l.id}
+                    className="border-border hover:bg-primary/5 border-t transition-colors"
+                  >
                     <td className="p-2">
                       <button
                         className="text-primary underline"
@@ -165,7 +182,7 @@ export function LeadQuality({
         </p>
       </section>
       {contact && (
-        <section className="border-primary/30 rounded-xl border p-5">
+        <section className="border-primary/30 bg-card rounded-[1.5rem] border p-5 sm:p-6">
           <h2 className="font-semibold">{contact.name}</h2>
           <div className="mt-3 grid gap-5 lg:grid-cols-2">
             <fieldset disabled={!allowed} className="space-y-3">

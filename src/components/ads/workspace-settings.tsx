@@ -48,12 +48,26 @@ export function WorkspaceSettings({
   }, []);
   return (
     <div className="space-y-5">
-      <section className="border-border bg-card rounded-xl border p-5">
-        <h2 className="font-semibold">Connected ad accounts</h2>
+      <div>
+        <h2 className="text-xl font-semibold tracking-tight">Ads settings</h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Manage connected accounts, qualification rules, and conversion
+          reporting.
+        </p>
+      </div>
+      <section className="border-border bg-card rounded-[1.5rem] border p-5 sm:p-6">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Connected ad accounts
+        </h2>
         <p className="text-muted-foreground mt-1 text-sm">
           Each account keeps its own reporting currency and timezone.
         </p>
-        <div className="mt-4 divide-y">
+        <div className="border-border mt-5 divide-y rounded-xl border px-4">
+          {!data.connections.length && (
+            <p className="text-muted-foreground py-5 text-sm">
+              No ad accounts connected yet. Connect Meta below to get started.
+            </p>
+          )}
           {data.connections.map((c) => (
             <div
               key={c.id}
@@ -114,8 +128,10 @@ export function WorkspaceSettings({
         </div>
       </section>
       {admin && (
-        <section className="border-border rounded-xl border p-5">
-          <h2 className="font-semibold">Connect or reconnect Meta</h2>
+        <section className="border-border bg-card rounded-[1.5rem] border p-5 sm:p-6">
+          <h2 className="text-lg font-semibold tracking-tight">
+            Connect or reconnect Meta
+          </h2>
           <p className="text-muted-foreground mt-1 text-sm">
             Select accounts your Meta login can access. Reconnecting updates the
             existing connection.
@@ -183,7 +199,7 @@ export function WorkspaceSettings({
             <div className="mt-4 space-y-2">
               {available.map((a) => (
                 <div
-                  className="flex items-center justify-between rounded-lg border p-3"
+                  className="border-border bg-muted/25 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3"
                   key={a.id}
                 >
                   <span className="text-sm">
@@ -213,8 +229,8 @@ export function WorkspaceSettings({
           )}
         </section>
       )}
-      <section className="border-border rounded-xl border p-5">
-        <h2 className="font-semibold">
+      <section className="border-border bg-card rounded-[1.5rem] border p-5 sm:p-6">
+        <h2 className="text-lg font-semibold tracking-tight">
           Business qualification and conversion rules
         </h2>
         <p className="text-muted-foreground mt-1 text-sm">
@@ -446,8 +462,10 @@ export function WorkspaceSettings({
           </div>
         </fieldset>
       </section>
-      <section className="border-border rounded-xl border p-5">
-        <h2 className="font-semibold">Payment and order confirmations</h2>
+      <section className="border-border bg-card rounded-[1.5rem] border p-5 sm:p-6">
+        <h2 className="text-lg font-semibold tracking-tight">
+          Payment and order confirmations
+        </h2>
         <p className="text-muted-foreground mt-1 text-sm">
           Your payment integration can confirm or refund a deal through the
           authenticated confirmation endpoint. Staff and payment confirmations

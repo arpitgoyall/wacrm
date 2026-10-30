@@ -59,7 +59,10 @@ export async function POST(request: Request) {
       const result = await syncWorkspaceConnection(
         ctx.accountId,
         String(body.connectionId),
-        body.action === 'backfill'
+        body.action === 'backfill',
+        body.action === 'backfill' && typeof body.start === 'string'
+          ? body.start
+          : undefined
       );
       return NextResponse.json(result);
     }

@@ -1,16 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  ComposedChart,
-  Bar,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from 'recharts';
+import { EChart } from '@/components/charts/echart';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/currency';
@@ -199,34 +190,61 @@ export function AdsInsights({
         </p>
         {r.daily.some((point) => point.leads > 0 || point.spend > 0) ? (
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={r.daily}>
-                <XAxis dataKey="date" minTickGap={45} />
-                <YAxis yAxisId="spend" hide={!r.spendCurrency} />
-                <YAxis
-                  yAxisId="leads"
-                  orientation="right"
-                  allowDecimals={false}
-                />
-                <Tooltip />
-                <Legend />
-                {r.spendCurrency && (
-                  <Bar
-                    yAxisId="spend"
-                    dataKey="spend"
-                    name={`Spend (${r.spendCurrency || 'currency unavailable'})`}
-                    fill="#f59e0b"
-                  />
-                )}
-                <Line
-                  yAxisId="leads"
-                  dataKey="leads"
-                  name="CRM leads"
-                  stroke="#3b82f6"
-                  dot={false}
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
+            <EChart
+              label="Daily spend and CRM leads"
+              option={{
+                color: ['#f59e0b', '#3b82f6'],
+                grid: { top: 42, right: 45, bottom: 35, left: 50 },
+                legend: { top: 0, textStyle: { color: '#8b929e' } },
+                tooltip: { trigger: 'axis' },
+                xAxis: {
+                  type: 'category',
+                  data: r.daily.map((day) => day.date),
+                  axisLabel: { color: '#8b929e', hideOverlap: true },
+                  axisLine: { show: false },
+                  axisTick: { show: false },
+                },
+                yAxis: [
+                  {
+                    type: 'value',
+                    min: 0,
+                    show: Boolean(r.spendCurrency),
+                    axisLabel: { color: '#8b929e' },
+                    splitLine: {
+                      lineStyle: { color: '#e5e7eb', type: 'dashed' },
+                    },
+                  },
+                  {
+                    type: 'value',
+                    min: 0,
+                    minInterval: 1,
+                    axisLabel: { color: '#8b929e' },
+                    splitLine: { show: false },
+                  },
+                ],
+                series: [
+                  ...(r.spendCurrency
+                    ? [
+                        {
+                          type: 'bar' as const,
+                          name: `Spend (${r.spendCurrency})`,
+                          data: r.daily.map((day) => day.spend),
+                          barMaxWidth: 14,
+                          itemStyle: { borderRadius: [3, 3, 0, 0] },
+                        },
+                      ]
+                    : []),
+                  {
+                    type: 'line',
+                    name: 'CRM leads',
+                    yAxisIndex: 1,
+                    data: r.daily.map((day) => day.leads),
+                    showSymbol: false,
+                    smooth: 0.25,
+                  },
+                ],
+              }}
+            />
           </div>
         ) : (
           <p className="text-muted-foreground py-10 text-center text-sm">
