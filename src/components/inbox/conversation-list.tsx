@@ -447,7 +447,7 @@ export function ConversationList({
     // w-full on mobile so the list occupies the whole viewport when it's
     // the single pane showing; fixed 320px on desktop where it shares the
     // row with the thread + contact sidebar.
-    <div className="border-border bg-card flex h-full w-full flex-col border-r lg:w-80">
+    <div className="border-border bg-card flex h-full min-w-0 w-full flex-col border-r lg:w-80">
       {headerActionsTarget && isOwner && pipelines.length > 0
         ? createPortal(
             <DropdownMenu>
@@ -866,19 +866,26 @@ function ConversationItem({
             {timeAgo}
           </span>
         </div>
-        <div className="mt-0.5 flex items-center justify-between gap-2">
+        <div className="mt-0.5 flex min-w-0 items-center justify-between gap-2">
           <p className="text-muted-foreground min-w-0 flex-1 truncate text-xs">
             {conversation.last_message_text || t('noMessagesYet')}
           </p>
-          <div className="flex shrink-0 items-center gap-1.5">
-            {conversation.unread_count > 0 && (
-              <span className="bg-primary text-primary-foreground flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold">
-                {conversation.unread_count}
-              </span>
+          {conversation.unread_count > 0 && (
+            <span className="bg-primary text-primary-foreground flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] font-bold">
+              {conversation.unread_count}
+            </span>
+          )}
+        </div>
+        {(showAssignee && assigneeName) || dealStage ? (
+          <div className="mt-1 flex min-w-0 items-center gap-2">
+            {showAssignee && assigneeName && (
+              <p className="text-muted-foreground min-w-0 flex-1 truncate text-[10px]">
+                {t('assignedTo', { name: assigneeName })}
+              </p>
             )}
             {dealStage && (
               <span
-                className="max-w-24 truncate rounded-full px-2 py-0.5 text-[10px] font-medium"
+                className="max-w-32 shrink-0 truncate rounded-full px-2 py-0.5 text-[10px] font-medium"
                 style={{
                   backgroundColor: `${dealStage.color}20`,
                   color: dealStage.color,
@@ -889,12 +896,7 @@ function ConversationItem({
               </span>
             )}
           </div>
-        </div>
-        {showAssignee && assigneeName && (
-          <p className="text-muted-foreground mt-1 truncate text-[10px]">
-            {t('assignedTo', { name: assigneeName })}
-          </p>
-        )}
+        ) : null}
       </div>
     </button>
   );

@@ -68,9 +68,16 @@ function LoginPageInner() {
     // back to /login — which looks like the page "just refreshing"
     // instead of signing in (issue #365). Mirrors the deliberate full
     // reload the invite-accept flow already uses in join/[token].
+    // `next` is only honoured for same-site relative paths (used by the
+    // OAuth consent flow to return here after sign-in).
+    const next = searchParams.get("next");
+    const safeNext =
+      next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")
+        ? next
+        : null;
     const destination = inviteToken
       ? `/join/${encodeURIComponent(inviteToken)}`
-      : "/dashboard";
+      : (safeNext ?? "/dashboard");
     window.location.href = destination;
   };
 
