@@ -12,10 +12,24 @@ interface AiConfigRow {
   auto_reply_max_per_conversation: number;
   handoff_agent_id: string | null;
   embeddings_api_key: string | null;
+  outreach_enabled: boolean | null;
+  outreach_enabled_at: string | null;
+  outreach_template_name: string | null;
+  outreach_delay_minutes: number | null;
+  followup_enabled: boolean | null;
+  followup_enabled_at: string | null;
+  followup_template_name: string | null;
+  followup_first_delay_hours: number | null;
+  followup_interval_hours: number | null;
+  followup_max_attempts: number | null;
+  proactive_template_language: string | null;
+  proactive_daily_cap: number | null;
 }
 
-const CONFIG_COLUMNS =
-  'provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key';
+export const PROACTIVE_COLUMNS =
+  'outreach_enabled, outreach_enabled_at, outreach_template_name, outreach_delay_minutes, followup_enabled, followup_enabled_at, followup_template_name, followup_first_delay_hours, followup_interval_hours, followup_max_attempts, proactive_template_language, proactive_daily_cap';
+
+const CONFIG_COLUMNS = `provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, ${PROACTIVE_COLUMNS}`;
 
 /**
  * Load and decrypt the account's AI config for *use* (draft or
@@ -79,6 +93,20 @@ export async function loadAiConfig(
     autoReplyMaxPerConversation: row.auto_reply_max_per_conversation,
     handoffAgentId: row.handoff_agent_id,
     embeddingsApiKey,
+    proactive: {
+      outreachEnabled: row.outreach_enabled ?? false,
+      outreachEnabledAt: row.outreach_enabled_at,
+      outreachTemplateName: row.outreach_template_name?.trim() || null,
+      outreachDelayMinutes: row.outreach_delay_minutes ?? 5,
+      followupEnabled: row.followup_enabled ?? false,
+      followupEnabledAt: row.followup_enabled_at,
+      followupTemplateName: row.followup_template_name?.trim() || null,
+      followupFirstDelayHours: row.followup_first_delay_hours ?? 4,
+      followupIntervalHours: row.followup_interval_hours ?? 24,
+      followupMaxAttempts: row.followup_max_attempts ?? 3,
+      templateLanguage: row.proactive_template_language || 'en',
+      dailyCap: row.proactive_daily_cap ?? 100,
+    },
   };
 }
 

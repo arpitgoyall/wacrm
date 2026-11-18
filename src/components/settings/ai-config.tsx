@@ -33,6 +33,13 @@ import {
 } from '@/components/ui/select';
 import { SettingsPanelHead } from './settings-panel-head';
 import { AiKnowledgeCard } from './ai-knowledge';
+import {
+  AiProactiveCard,
+  DEFAULT_PROACTIVE,
+  proactiveFromApi,
+  proactiveToApi,
+  type ProactiveState,
+} from './ai-proactive-card';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
@@ -90,6 +97,7 @@ export function AiConfig() {
   // Empty string = leave unassigned (shared queue).
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
+  const [proactive, setProactive] = useState<ProactiveState>(DEFAULT_PROACTIVE);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
   // account switch — ownership transfer, multi-account membership —
@@ -115,6 +123,7 @@ export function AiConfig() {
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
         setHandoffAgentId(data.handoff_agent_id ?? '');
+        setProactive(proactiveFromApi(data));
         setHasStoredKey(Boolean(data.has_key));
         setApiKey(data.has_key ? MASKED_KEY : '');
         setKeyEdited(false);
@@ -194,6 +203,7 @@ export function AiConfig() {
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
+    ...proactiveToApi(proactive),
   });
 
   const handleTest = async () => {
@@ -262,6 +272,7 @@ export function AiConfig() {
         setAutoReplyEnabled(false);
         setSystemPrompt('');
         setHandoffAgentId('');
+        setProactive(DEFAULT_PROACTIVE);
       } else {
         const data = await res.json();
         toast.error(data.error ?? t('removeFailed'));
@@ -584,6 +595,13 @@ export function AiConfig() {
             </div>
           </CardContent>
         </Card>
+
+        <AiProactiveCard
+          value={proactive}
+          onChange={setProactive}
+          disabled={disabled}
+          assistantActive={isActive}
+        />
 
         <AiKnowledgeCard
           accountId={accountId}

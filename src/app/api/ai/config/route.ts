@@ -13,6 +13,19 @@ import { encrypt, decrypt } from '@/lib/whatsapp/encryption';
 import { validateAiCredentials } from '@/lib/ai/validate';
 import { embedTexts } from '@/lib/ai/embeddings';
 import { AiError, type AiProvider } from '@/lib/ai/types';
+import { PROACTIVE_COLUMNS } from '@/lib/ai/config';
+
+function clampInt(raw: unknown, min: number, max: number, fallback: number) {
+  const n = Math.floor(Number(raw));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function cleanText(raw: unknown, maxLen: number): string | null {
+  return typeof raw === 'string' && raw.trim()
+    ? raw.trim().slice(0, maxLen)
+    : null;
+}
 
 function bad(message: string) {
   return NextResponse.json({ error: message }, { status: 400 });
@@ -34,7 +47,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key'
+        `provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key, ${PROACTIVE_COLUMNS}`
       )
       .eq('account_id', accountId)
       .maybeSingle();
@@ -142,7 +155,7 @@ export async function POST(request: Request) {
     // Reuse the stored key when the form didn't send a fresh one.
     const { data: existing } = await supabase
       .from('ai_configs')
-      .select('id, provider, model, api_key')
+      .select('id, provider, model, api_key, outreach_enabled, followup_enabled')
       .eq('account_id', accountId)
       .maybeSingle();
 
@@ -229,6 +242,35 @@ export async function POST(request: Request) {
       shared.embeddings_api_key = encrypt(rawEmbeddingsKey);
     } else if (clearEmbeddingsKey) {
       shared.embeddings_api_key = null;
+    }
+
+    // Proactive messaging (new-lead outreach + re-engagement). Only touched
+    // when the form sends it. `*_enabled_at` is stamped when a feature flips
+    // on so it never reaches back to contacts/chats that pre-date it.
+    if ('followup_enabled' in body || 'outreach_enabled' in body) {
+      const nowIso = new Date().toISOString();
+      const outreachOn = body.outreach_enabled === true;
+      const followupOn = body.followup_enabled === true;
+      shared.outreach_enabled = outreachOn;
+      shared.followup_enabled = followupOn;
+      if (outreachOn && !existing?.outreach_enabled) {
+        shared.outreach_enabled_at = nowIso;
+      }
+      if (followupOn && !existing?.followup_enabled) {
+        shared.followup_enabled_at = nowIso;
+      }
+      shared.outreach_template_name = cleanText(body.outreach_template_name, 512);
+      shared.followup_template_name = cleanText(body.followup_template_name, 512);
+      shared.proactive_template_language =
+        cleanText(body.proactive_template_language, 16) ?? 'en';
+      shared.outreach_delay_minutes = clampInt(body.outreach_delay_minutes, 1, 1440, 5);
+      shared.followup_first_delay_hours = clampInt(body.followup_first_delay_hours, 1, 720, 4);
+      shared.followup_interval_hours = clampInt(body.followup_interval_hours, 1, 720, 24);
+      shared.followup_max_attempts = clampInt(body.followup_max_attempts, 1, 10, 3);
+      shared.proactive_daily_cap = clampInt(body.proactive_daily_cap, 1, 5000, 100);
+      if (outreachOn && !shared.outreach_template_name) {
+        return bad('An approved template name is required for new-lead outreach.');
+      }
     }
 
     if (existing) {

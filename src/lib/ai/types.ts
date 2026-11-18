@@ -29,6 +29,25 @@ export interface AiConfig {
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
   embeddingsApiKey: string | null;
+  /** New-lead outreach + re-engagement settings (migration 081). Optional
+   *  so callers that only need chat settings can omit it. */
+  proactive?: AiProactiveSettings;
+}
+
+/** Proactive (agent-initiated) messaging settings. */
+export interface AiProactiveSettings {
+  outreachEnabled: boolean;
+  outreachEnabledAt: string | null;
+  outreachTemplateName: string | null;
+  outreachDelayMinutes: number;
+  followupEnabled: boolean;
+  followupEnabledAt: string | null;
+  followupTemplateName: string | null;
+  followupFirstDelayHours: number;
+  followupIntervalHours: number;
+  followupMaxAttempts: number;
+  templateLanguage: string;
+  dailyCap: number;
 }
 
 /** A single conversation turn in the shape both providers accept. */
