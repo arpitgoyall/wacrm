@@ -11,6 +11,7 @@ import type { AiConfig, AiProactiveSettings } from './types'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { resolveTemplateRow } from '@/lib/whatsapp/template-body'
+import { applyLeadOutcome, loadLeadContact, moveLeadStage } from './lead-outcome'
 
 // ============================================================
 // Proactive AI agent: new-lead outreach + re-engagement.
@@ -196,7 +197,7 @@ async function runOutreach(
 
   for (const contact of contacts) {
     if (res.sent >= budget) break
-    let conv = byContact.get(contact.id)
+    const conv = byContact.get(contact.id)
     // Anyone who already has a message history (they wrote first, or a
     // human reached out) is not a cold lead.
     if (conv && (conv.ai_outreach_sent_at || conv.last_message_at || conv.ai_followup_disabled)) {
@@ -255,7 +256,47 @@ async function runOutreach(
 
 // ------------------------------------------------------------
 // Re-engagement of quiet conversations
+//
+// Rules (phase 1):
+//   - Promotional nudges only inside WhatsApp's 24h free-form window — no
+//     templates. The window is measured from the customer's last message.
+//   - Runs whether or not a human was assigned / the AI handed off. It
+//     skips chats where the customer is waiting on us (last sender is the
+//     customer), where a human spoke very recently, and leads that are
+//     already qualified (by the AI or a human moving the deal) or lost.
+//   - Only during the account's send hours (quiet hours, local time).
+//   - The model decides per chat whether a nudge would actually help
+//     ([[SKIP]]); a skipped chat still uses up that attempt so it isn't
+//     re-asked every tick.
 // ------------------------------------------------------------
+
+/** Hour (0-23) in the given IANA time zone. */
+export function localHour(now: Date, timeZone: string): number {
+  try {
+    const h = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: '2-digit',
+      hourCycle: 'h23',
+    }).format(now)
+    return Number(h) % 24
+  } catch {
+    return now.getUTCHours()
+  }
+}
+
+export function withinSendHours(
+  now: Date,
+  p: Pick<AiProactiveSettings, 'sendStartHour' | 'sendEndHour' | 'timezone'>,
+): boolean {
+  const h = localHour(now, p.timezone)
+  return p.sendStartHour <= p.sendEndHour
+    ? h >= p.sendStartHour && h < p.sendEndHour
+    : h >= p.sendStartHour || h < p.sendEndHour // window crosses midnight
+}
+
+/** A human teammate's message must be at least this old before we nudge. */
+const HUMAN_ACTIVE_MS = 2 * HOUR
+
 async function runFollowups(
   db: SupabaseClient,
   accountId: string,
@@ -266,7 +307,14 @@ async function runFollowups(
   budget: number,
 ): Promise<{ sent: number; errors: number }> {
   const res = { sent: 0, errors: 0 }
+
+  // Leads whose window closed after our nudges, unanswered → Not Responding.
+  await markNotResponding(db, accountId, ownerUserId, config, p, now)
+
+  if (!withinSendHours(now, p)) return res
+
   const earliestQuiet = new Date(now.getTime() - p.followupFirstDelayHours * HOUR)
+  const windowStart = new Date(now.getTime() - WINDOW_MS)
   const oldest = new Date(
     Math.max(
       new Date(p.followupEnabledAt!).getTime(),
@@ -276,33 +324,36 @@ async function runFollowups(
 
   const { data: convs, error } = await db
     .from('conversations')
-    .select('id, contact_id, last_message_at, ai_followup_count')
+    .select('id, contact_id, last_message_at, last_message_sender_type, ai_followup_count')
     .eq('account_id', accountId)
     .neq('status', 'closed')
-    .is('assigned_agent_id', null)
-    .eq('ai_autoreply_disabled', false)
     .eq('ai_followup_disabled', false)
-    .eq('last_message_sender_type', 'bot')
-    // Only chats the AI itself is part of — either it already auto-replied
-    // here or it sent the lead opener. Flows / automations / broadcasts also
-    // send as 'bot', and those must not get AI nudges layered on top.
-    .or('ai_reply_count.gt.0,ai_outreach_sent_at.not.is.null')
+    .is('ai_outcome', null)
+    .in('last_message_sender_type', ['bot', 'agent'])
     .lt('ai_followup_count', p.followupMaxAttempts)
+    .gte('last_customer_message_at', windowStart.toISOString())
     .gte('last_message_at', oldest.toISOString())
     .lte('last_message_at', earliestQuiet.toISOString())
     .order('last_message_at', { ascending: true })
     .limit(budget * 4)
   if (error || !convs?.length) return res
 
+  const guard = await loadQualifiedGuard(db, config)
+
   for (const conv of convs) {
     if (res.sent >= budget) break
     const count = (conv.ai_followup_count as number) ?? 0
     const lastAt = conv.last_message_at as string
-    const quietHours = (now.getTime() - new Date(lastAt).getTime()) / HOUR
+    const quietMs = now.getTime() - new Date(lastAt).getTime()
+    const quietHours = quietMs / HOUR
     const needed = count === 0 ? p.followupFirstDelayHours : p.followupIntervalHours
     if (quietHours < needed) continue
+    if (conv.last_message_sender_type === 'agent' && quietMs < HUMAN_ACTIVE_MS) continue
 
     try {
+      // A human may have moved the deal to Qualified or beyond — stop there.
+      if (await dealAtOrPastQualified(db, accountId, conv.contact_id, guard)) continue
+
       const { data: lastCustomer } = await db
         .from('messages')
         .select('content_text, created_at')
@@ -311,18 +362,18 @@ async function runFollowups(
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle()
+      if (!lastCustomer) continue
+      if (now.getTime() - new Date(lastCustomer.created_at as string).getTime() >= WINDOW_MS) {
+        continue // the window closed since the query
+      }
 
-      if (isOptOutText(lastCustomer?.content_text)) {
+      if (isOptOutText(lastCustomer.content_text)) {
         await db
           .from('conversations')
           .update({ ai_followup_disabled: true })
           .eq('id', conv.id)
         continue
       }
-
-      const windowOpen =
-        !!lastCustomer &&
-        now.getTime() - new Date(lastCustomer.created_at as string).getTime() < WINDOW_MS
 
       const claim = async (): Promise<boolean> => {
         const { data } = await db
@@ -335,76 +386,78 @@ async function runFollowups(
         return !!data?.length
       }
 
-      if (windowOpen) {
-        const messages = await buildConversationContext(db, conv.id)
-        if (messages.length === 0) continue
-        const knowledge = await retrieveKnowledge(
-          db, accountId, config, latestUserMessage(messages),
-        )
-        const { text, handoff, usage } = await generateReply({
-          config,
-          systemPrompt: buildSystemPrompt({
-            userPrompt: config.systemPrompt,
-            mode: 'auto_reply',
-            knowledge,
-            followup: {
-              attempt: count + 1,
-              maxAttempts: p.followupMaxAttempts,
-              hoursSilent: quietHours,
-            },
-          }),
-          messages: [
-            ...messages,
-            { role: 'user', content: '(No reply from the customer yet. Write the follow-up now.)' },
-          ],
-        })
-        void logAiUsage(db, {
-          accountId,
-          conversationId: conv.id,
+      const messages = await buildConversationContext(db, conv.id)
+      if (messages.length === 0) continue
+      const leadContact = await loadLeadContact(db, accountId, conv.contact_id)
+      const knowledge = await retrieveKnowledge(
+        db, accountId, config, latestUserMessage(messages),
+      )
+      const { text, handoff, usage, outcome, lead, skip } = await generateReply({
+        config,
+        systemPrompt: buildSystemPrompt({
+          userPrompt: config.systemPrompt,
           mode: 'auto_reply',
-          provider: config.provider,
-          model: config.model,
-          usage,
-        })
-        if (handoff || !text) {
-          await db
-            .from('conversations')
-            .update({ ai_followup_disabled: true })
-            .eq('id', conv.id)
-          continue
-        }
-        if (!(await claim())) continue
-        await engineSendText({
-          accountId,
-          userId: ownerUserId,
-          conversationId: conv.id,
-          contactId: conv.contact_id,
-          text,
-          aiGenerated: true,
-        })
-        res.sent += 1
-      } else if (p.followupTemplateName) {
-        if (!(await claim())) continue
-        const { data: contact } = await db
-          .from('contacts')
-          .select('name')
-          .eq('id', conv.contact_id)
-          .maybeSingle()
-        const params = await templateParams(
-          db, accountId, p.followupTemplateName, p.templateLanguage, contact?.name ?? null,
-        )
-        await engineSendTemplate({
-          accountId,
-          userId: ownerUserId,
-          conversationId: conv.id,
-          contactId: conv.contact_id,
-          templateName: p.followupTemplateName,
-          language: p.templateLanguage,
-          params,
-        })
-        res.sent += 1
+          knowledge,
+          followup: {
+            attempt: count + 1,
+            maxAttempts: p.followupMaxAttempts,
+            hoursSilent: quietHours,
+          },
+          leadTracking: { criteria: config.lead?.criteria ?? null, card: leadContact.card },
+        }),
+        messages: [
+          ...messages,
+          { role: 'user', content: '(No reply from the customer yet. Decide whether to send a follow-up now.)' },
+        ],
+      })
+      void logAiUsage(db, {
+        accountId,
+        conversationId: conv.id,
+        mode: 'auto_reply',
+        provider: config.provider,
+        model: config.model,
+        usage,
+      })
+
+      const outcomeArgs = {
+        accountId,
+        conversationId: conv.id,
+        contactId: conv.contact_id as string,
+        ownerUserId,
+        config,
+        contact: leadContact,
+        currentOutcome: null,
+        assignedAgentId: null,
+        incoming: lead,
       }
-      // Window closed and no template configured: nothing legal to send.
+
+      if (outcome === 'lost') {
+        await applyLeadOutcome(db, { ...outcomeArgs, outcome: 'lost' })
+        continue
+      }
+      if (handoff) {
+        // A human is better placed; stop nudging this chat.
+        await db.from('conversations').update({ ai_followup_disabled: true }).eq('id', conv.id)
+        await applyLeadOutcome(db, { ...outcomeArgs, outcome: 'needs_human' }) // card only
+        continue
+      }
+      if (skip || !text) {
+        await claim() // use up this attempt without sending
+        await applyLeadOutcome(db, { ...outcomeArgs, outcome: 'needs_human' }) // card only
+        continue
+      }
+      if (!(await claim())) continue
+      await engineSendText({
+        accountId,
+        userId: ownerUserId,
+        conversationId: conv.id,
+        contactId: conv.contact_id,
+        text,
+        aiGenerated: true,
+      })
+      // Save the card only — a nudge the customer hasn't answered never qualifies.
+      await applyLeadOutcome(db, { ...outcomeArgs, outcome: 'needs_human' })
+      res.sent += 1
     } catch (err) {
       res.errors += 1
       console.error(
@@ -414,4 +467,97 @@ async function runFollowups(
     }
   }
   return res
+}
+
+interface QualifiedGuard {
+  pipelineId: string
+  positions: Map<string, number>
+  qualifiedPos: number
+}
+
+async function loadQualifiedGuard(
+  db: SupabaseClient,
+  config: AiConfig,
+): Promise<QualifiedGuard | null> {
+  const lead = config.lead
+  if (!lead?.pipelineId || !lead.stageQualifiedId) return null
+  const { data: stages } = await db
+    .from('pipeline_stages')
+    .select('id, position')
+    .eq('pipeline_id', lead.pipelineId)
+  const positions = new Map(
+    ((stages ?? []) as { id: string; position: number }[]).map((s) => [s.id, s.position]),
+  )
+  const qualifiedPos = positions.get(lead.stageQualifiedId)
+  if (qualifiedPos === undefined) return null
+  return { pipelineId: lead.pipelineId, positions, qualifiedPos }
+}
+
+async function dealAtOrPastQualified(
+  db: SupabaseClient,
+  accountId: string,
+  contactId: string,
+  guard: QualifiedGuard | null,
+): Promise<boolean> {
+  if (!guard) return false
+  const { data: deals } = await db
+    .from('deals')
+    .select('stage_id')
+    .eq('account_id', accountId)
+    .eq('contact_id', contactId)
+    .eq('pipeline_id', guard.pipelineId)
+    .eq('status', 'open')
+    .order('created_at', { ascending: false })
+    .limit(1)
+  const stageId = (deals?.[0] as { stage_id: string } | undefined)?.stage_id
+  if (!stageId) return false
+  return (guard.positions.get(stageId) ?? -1) >= guard.qualifiedPos
+}
+
+/** Nudged at least once, still unanswered, and the 24h window has closed. */
+async function markNotResponding(
+  db: SupabaseClient,
+  accountId: string,
+  ownerUserId: string,
+  config: AiConfig,
+  p: AiProactiveSettings,
+  now: Date,
+): Promise<void> {
+  try {
+    const windowStart = new Date(now.getTime() - WINDOW_MS)
+    const oldest = new Date(
+      Math.max(new Date(p.followupEnabledAt!).getTime(), now.getTime() - FOLLOWUP_LOOKBACK_MS),
+    )
+    const { data: convs } = await db
+      .from('conversations')
+      .select('id, contact_id')
+      .eq('account_id', accountId)
+      .is('ai_outcome', null)
+      .gt('ai_followup_count', 0)
+      .in('last_message_sender_type', ['bot', 'agent'])
+      .lt('last_customer_message_at', windowStart.toISOString())
+      .gte('last_message_at', oldest.toISOString())
+      .limit(25)
+    for (const conv of convs ?? []) {
+      const { data: claimed } = await db
+        .from('conversations')
+        .update({ ai_outcome: 'not_responding', ai_outcome_at: now.toISOString() })
+        .eq('id', conv.id)
+        .is('ai_outcome', null)
+        .select('id')
+      if (!claimed?.length) continue
+      const contact = await loadLeadContact(db, accountId, conv.contact_id)
+      await moveLeadStage(db, {
+        accountId,
+        contactId: conv.contact_id,
+        conversationId: conv.id,
+        ownerUserId,
+        lead: config.lead,
+        target: 'not_responding',
+        contactLabel: contact.card.name || contact.name || contact.phone || 'WhatsApp lead',
+      })
+    }
+  } catch (err) {
+    console.error('[ai proactive] not-responding sweep failed:', err)
+  }
 }

@@ -17,12 +17,14 @@ export interface ProactiveState {
   outreachTemplateName: string;
   outreachDelayMinutes: number;
   followupEnabled: boolean;
-  followupTemplateName: string;
   followupFirstDelayHours: number;
   followupIntervalHours: number;
   followupMaxAttempts: number;
   templateLanguage: string;
   dailyCap: number;
+  sendStartHour: number;
+  sendEndHour: number;
+  timezone: string;
 }
 
 export const DEFAULT_PROACTIVE: ProactiveState = {
@@ -30,12 +32,14 @@ export const DEFAULT_PROACTIVE: ProactiveState = {
   outreachTemplateName: '',
   outreachDelayMinutes: 5,
   followupEnabled: false,
-  followupTemplateName: '',
   followupFirstDelayHours: 4,
   followupIntervalHours: 24,
   followupMaxAttempts: 3,
   templateLanguage: 'en',
   dailyCap: 100,
+  sendStartHour: 9,
+  sendEndHour: 21,
+  timezone: 'Asia/Kolkata',
 };
 
 /** Map the API's snake_case config onto form state. */
@@ -46,7 +50,6 @@ export function proactiveFromApi(data: Record<string, unknown>): ProactiveState 
     outreachTemplateName: (data.outreach_template_name as string) ?? '',
     outreachDelayMinutes: Number(data.outreach_delay_minutes) || d.outreachDelayMinutes,
     followupEnabled: data.followup_enabled === true,
-    followupTemplateName: (data.followup_template_name as string) ?? '',
     followupFirstDelayHours:
       Number(data.followup_first_delay_hours) || d.followupFirstDelayHours,
     followupIntervalHours:
@@ -54,6 +57,11 @@ export function proactiveFromApi(data: Record<string, unknown>): ProactiveState 
     followupMaxAttempts: Number(data.followup_max_attempts) || d.followupMaxAttempts,
     templateLanguage: (data.proactive_template_language as string) || d.templateLanguage,
     dailyCap: Number(data.proactive_daily_cap) || d.dailyCap,
+    sendStartHour: Number.isFinite(Number(data.followup_send_start_hour))
+      ? Number(data.followup_send_start_hour)
+      : d.sendStartHour,
+    sendEndHour: Number(data.followup_send_end_hour) || d.sendEndHour,
+    timezone: (data.proactive_timezone as string) || d.timezone,
   };
 }
 
@@ -64,12 +72,14 @@ export function proactiveToApi(s: ProactiveState) {
     outreach_template_name: s.outreachTemplateName.trim() || null,
     outreach_delay_minutes: s.outreachDelayMinutes,
     followup_enabled: s.followupEnabled,
-    followup_template_name: s.followupTemplateName.trim() || null,
     followup_first_delay_hours: s.followupFirstDelayHours,
     followup_interval_hours: s.followupIntervalHours,
     followup_max_attempts: s.followupMaxAttempts,
     proactive_template_language: s.templateLanguage.trim() || 'en',
     proactive_daily_cap: s.dailyCap,
+    followup_send_start_hour: s.sendStartHour,
+    followup_send_end_hour: s.sendEndHour,
+    proactive_timezone: s.timezone.trim() || 'Asia/Kolkata',
   };
 }
 
@@ -191,11 +201,11 @@ export function AiProactiveCard({
                 Re-engage quiet leads
               </p>
               <p className="text-muted-foreground text-xs">
-                Friendly AI follow-ups when the customer stops replying in a
-                chat the AI is handling (it auto-replied or sent the opener;
-                flows and broadcasts are left alone). Stops
-                on opt-out words (&quot;stop&quot;, &quot;not interested&quot;,
-                &quot;mat bhejo&quot;), human takeover, or after the max.
+                Promotional AI nudges when a lead goes quiet — only inside
+                WhatsApp&apos;s 24-hour window, whether or not a human has the
+                chat. The AI decides if a nudge would help, stops once the lead
+                is qualified or lost, and respects opt-out words
+                (&quot;stop&quot;, &quot;mat bhejo&quot;).
               </p>
             </div>
             <Switch
@@ -235,21 +245,37 @@ export function AiProactiveCard({
                   disabled={off}
                 />
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="ai-fu-tpl" className="text-xs">
-                  Template for chats older than 24h{' '}
-                  <span className="text-muted-foreground font-normal">
-                    (optional — without it, only chats inside the 24h window
-                    get nudged)
-                  </span>
-                </Label>
-                <Input
-                  id="ai-fu-tpl"
-                  value={value.followupTemplateName}
-                  onChange={(e) => set('followupTemplateName', e.target.value)}
-                  placeholder="checking_in"
+              <div className="grid gap-3 sm:grid-cols-3">
+                <NumberField
+                  id="ai-fu-start"
+                  label="Send from (hour, 0–23)"
+                  value={value.sendStartHour}
+                  min={0}
+                  max={23}
+                  onChange={(n) => set('sendStartHour', n)}
                   disabled={off}
                 />
+                <NumberField
+                  id="ai-fu-end"
+                  label="Send until (hour, 1–24)"
+                  value={value.sendEndHour}
+                  min={1}
+                  max={24}
+                  onChange={(n) => set('sendEndHour', n)}
+                  disabled={off}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="ai-fu-tz" className="text-xs">
+                    Time zone
+                  </Label>
+                  <Input
+                    id="ai-fu-tz"
+                    value={value.timezone}
+                    onChange={(e) => set('timezone', e.target.value)}
+                    placeholder="Asia/Kolkata"
+                    disabled={off}
+                  />
+                </div>
               </div>
             </>
           )}

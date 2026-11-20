@@ -271,6 +271,51 @@ export async function POST(request: Request) {
       if (outreachOn && !shared.outreach_template_name) {
         return bad('An approved template name is required for new-lead outreach.');
       }
+      shared.followup_send_start_hour = clampInt(body.followup_send_start_hour, 0, 23, 9);
+      shared.followup_send_end_hour = clampInt(body.followup_send_end_hour, 1, 24, 21);
+      const tz = cleanText(body.proactive_timezone, 64) ?? 'Asia/Kolkata';
+      try {
+        new Intl.DateTimeFormat('en-US', { timeZone: tz });
+      } catch {
+        return bad(`Unknown time zone: ${tz}`);
+      }
+      shared.proactive_timezone = tz;
+    }
+
+    // Lead qualification → pipeline stages. Only touched when sent. Every
+    // stage must belong to the chosen pipeline, which must be this account's.
+    if ('qualification_pipeline_id' in body) {
+      const pipelineId = cleanText(body.qualification_pipeline_id, 64);
+      const stageKeys = [
+        'stage_qualified_id',
+        'stage_lost_id',
+        'stage_not_responding_id',
+        'stage_follow_up_id',
+      ] as const;
+      shared.qualification_criteria = cleanText(body.qualification_criteria, 2000);
+      if (!pipelineId) {
+        shared.qualification_pipeline_id = null;
+        for (const k of stageKeys) shared[k] = null;
+      } else {
+        const { data: pipeline } = await supabase
+          .from('pipelines')
+          .select('id')
+          .eq('id', pipelineId)
+          .eq('account_id', accountId)
+          .maybeSingle();
+        if (!pipeline) return bad('Pipeline not found in this account');
+        const { data: stages } = await supabase
+          .from('pipeline_stages')
+          .select('id')
+          .eq('pipeline_id', pipelineId);
+        const valid = new Set((stages ?? []).map((s: { id: string }) => s.id));
+        shared.qualification_pipeline_id = pipelineId;
+        for (const k of stageKeys) {
+          const v = cleanText(body[k], 64);
+          if (v && !valid.has(v)) return bad(`${k} is not a stage of that pipeline`);
+          shared[k] = v;
+        }
+      }
     }
 
     if (existing) {

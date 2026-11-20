@@ -9,6 +9,7 @@ import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import type { ChatMessage } from './types'
 import { fireConversationAssigned, pickHandoffAgent } from './handoff-assign'
+import { applyLeadOutcome, loadLeadContact } from './lead-outcome'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
@@ -120,7 +121,7 @@ export async function dispatchInboundToAiReply(
 
     const { data: conv, error: convErr } = await db
       .from('conversations')
-      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count')
+      .select('assigned_agent_id, ai_autoreply_disabled, ai_reply_count, ai_outcome')
       .eq('id', conversationId)
       .maybeSingle()
     if (convErr || !conv) return
@@ -178,13 +179,29 @@ export async function dispatchInboundToAiReply(
       latestUserMessage(messages),
     )
 
+    // What we already know about this lead — fed to the model so it doesn't
+    // re-ask, and merged with whatever it learns this turn.
+    const leadContact = await loadLeadContact(db, accountId, contactId)
+
     const systemPrompt = buildSystemPrompt({
       userPrompt: config.systemPrompt,
       mode: 'auto_reply',
       knowledge,
+      leadTracking: { criteria: config.lead?.criteria ?? null, card: leadContact.card },
     })
 
-    const { text, handoff, usage } = await generateReply({
+    const outcomeArgs = {
+      accountId,
+      conversationId,
+      contactId,
+      ownerUserId: configOwnerUserId,
+      config,
+      contact: leadContact,
+      currentOutcome: (conv.ai_outcome as string | null) ?? null,
+      assignedAgentId: null,
+    }
+
+    const { text, handoff, usage, outcome, lead } = await generateReply({
       config,
       systemPrompt,
       messages,
@@ -236,6 +253,9 @@ export async function dispatchInboundToAiReply(
         if (assignee) update.assigned_agent_id = assignee
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+
+      // Keep what the AI learned about the lead, for whoever picks it up.
+      await applyLeadOutcome(db, { ...outcomeArgs, outcome: 'needs_human', incoming: lead })
 
       const assignedTo = update.assigned_agent_id as string | undefined
       if (assignedTo) {
@@ -289,6 +309,10 @@ export async function dispatchInboundToAiReply(
       text,
       aiGenerated: true,
     })
+
+    // After the reply lands: save the lead card and act on the outcome
+    // (qualified → stage + counsellor + assigned automation; lost → stage).
+    await applyLeadOutcome(db, { ...outcomeArgs, outcome, incoming: lead })
   } catch (err) {
     console.error('[ai auto-reply] dispatch failed:', err)
   }

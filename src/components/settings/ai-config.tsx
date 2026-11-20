@@ -40,6 +40,13 @@ import {
   proactiveToApi,
   type ProactiveState,
 } from './ai-proactive-card';
+import {
+  AiQualificationCard,
+  DEFAULT_QUALIFICATION,
+  qualificationFromApi,
+  qualificationToApi,
+  type QualificationState,
+} from './ai-qualification-card';
 import { AI_PROVIDER_DEFAULT_MODEL } from '@/lib/ai/defaults';
 import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
@@ -98,6 +105,8 @@ export function AiConfig() {
   const [handoffAgentId, setHandoffAgentId] = useState('');
   const [members, setMembers] = useState<AccountMember[]>([]);
   const [proactive, setProactive] = useState<ProactiveState>(DEFAULT_PROACTIVE);
+  const [qualification, setQualification] =
+    useState<QualificationState>(DEFAULT_QUALIFICATION);
 
   // Guard keyed on the account (not a bare boolean) so an in-place
   // account switch — ownership transfer, multi-account membership —
@@ -124,6 +133,7 @@ export function AiConfig() {
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
         setHandoffAgentId(data.handoff_agent_id ?? '');
         setProactive(proactiveFromApi(data));
+        setQualification(qualificationFromApi(data));
         setHasStoredKey(Boolean(data.has_key));
         setApiKey(data.has_key ? MASKED_KEY : '');
         setKeyEdited(false);
@@ -204,6 +214,7 @@ export function AiConfig() {
     auto_reply_max_per_conversation: maxPerConversation,
     handoff_agent_id: handoffAgentId || null,
     ...proactiveToApi(proactive),
+    ...qualificationToApi(qualification),
   });
 
   const handleTest = async () => {
@@ -273,6 +284,7 @@ export function AiConfig() {
         setSystemPrompt('');
         setHandoffAgentId('');
         setProactive(DEFAULT_PROACTIVE);
+        setQualification(DEFAULT_QUALIFICATION);
       } else {
         const data = await res.json();
         toast.error(data.error ?? t('removeFailed'));
@@ -595,6 +607,13 @@ export function AiConfig() {
             </div>
           </CardContent>
         </Card>
+
+        <AiQualificationCard
+          accountId={accountId}
+          value={qualification}
+          onChange={setQualification}
+          disabled={disabled}
+        />
 
         <AiProactiveCard
           value={proactive}

@@ -24,10 +24,19 @@ interface AiConfigRow {
   followup_max_attempts: number | null;
   proactive_template_language: string | null;
   proactive_daily_cap: number | null;
+  followup_send_start_hour: number | null;
+  followup_send_end_hour: number | null;
+  proactive_timezone: string | null;
+  qualification_pipeline_id: string | null;
+  stage_qualified_id: string | null;
+  stage_lost_id: string | null;
+  stage_not_responding_id: string | null;
+  stage_follow_up_id: string | null;
+  qualification_criteria: string | null;
 }
 
 export const PROACTIVE_COLUMNS =
-  'outreach_enabled, outreach_enabled_at, outreach_template_name, outreach_delay_minutes, followup_enabled, followup_enabled_at, followup_template_name, followup_first_delay_hours, followup_interval_hours, followup_max_attempts, proactive_template_language, proactive_daily_cap';
+  'outreach_enabled, outreach_enabled_at, outreach_template_name, outreach_delay_minutes, followup_enabled, followup_enabled_at, followup_template_name, followup_first_delay_hours, followup_interval_hours, followup_max_attempts, proactive_template_language, proactive_daily_cap, followup_send_start_hour, followup_send_end_hour, proactive_timezone, qualification_pipeline_id, stage_qualified_id, stage_lost_id, stage_not_responding_id, stage_follow_up_id, qualification_criteria';
 
 const CONFIG_COLUMNS = `provider, model, api_key, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, embeddings_api_key, ${PROACTIVE_COLUMNS}`;
 
@@ -106,6 +115,17 @@ export async function loadAiConfig(
       followupMaxAttempts: row.followup_max_attempts ?? 3,
       templateLanguage: row.proactive_template_language || 'en',
       dailyCap: row.proactive_daily_cap ?? 100,
+      sendStartHour: row.followup_send_start_hour ?? 9,
+      sendEndHour: row.followup_send_end_hour ?? 21,
+      timezone: row.proactive_timezone || 'Asia/Kolkata',
+    },
+    lead: {
+      pipelineId: row.qualification_pipeline_id,
+      stageQualifiedId: row.stage_qualified_id,
+      stageLostId: row.stage_lost_id,
+      stageNotRespondingId: row.stage_not_responding_id,
+      stageFollowUpId: row.stage_follow_up_id,
+      criteria: row.qualification_criteria?.trim() || null,
     },
   };
 }

@@ -10,6 +10,8 @@ const h = vi.hoisted(() => ({
   engineSendText: vi.fn(),
   pickHandoffAgent: vi.fn(),
   fireConversationAssigned: vi.fn(),
+  loadLeadContact: vi.fn(),
+  applyLeadOutcome: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -24,6 +26,10 @@ vi.mock('./context', () => ({ buildConversationContext: h.buildConversationConte
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
+vi.mock('./lead-outcome', () => ({
+  loadLeadContact: h.loadLeadContact,
+  applyLeadOutcome: h.applyLeadOutcome,
+}))
 vi.mock('./handoff-assign', () => ({
   pickHandoffAgent: h.pickHandoffAgent,
   fireConversationAssigned: h.fireConversationAssigned,
@@ -104,6 +110,8 @@ beforeEach(() => {
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
   h.pickHandoffAgent.mockReset().mockResolvedValue('agent-auto')
   h.fireConversationAssigned.mockReset().mockResolvedValue(undefined)
+  h.loadLeadContact.mockReset().mockResolvedValue({ card: {}, name: null, phone: null })
+  h.applyLeadOutcome.mockReset().mockResolvedValue(undefined)
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -240,5 +248,38 @@ describe('dispatchInboundToAiReply — handoff', () => {
     await dispatchInboundToAiReply(ARGS)
     expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
     expect(h.fireConversationAssigned).not.toHaveBeenCalled()
+  })
+})
+
+describe('dispatchInboundToAiReply — lead outcomes', () => {
+  it('sends the reply, then applies the qualified outcome with the learned card', async () => {
+    h.generateReply.mockResolvedValue({
+      text: 'Awesome! Connecting you with our counsellor 😊',
+      handoff: false,
+      outcome: 'qualified',
+      lead: { name: 'Riya', occupation: 'B.Tech student', goal: 'drone career' },
+    })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendText).toHaveBeenCalledTimes(1)
+    expect(h.applyLeadOutcome).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        outcome: 'qualified',
+        incoming: { name: 'Riya', occupation: 'B.Tech student', goal: 'drone career' },
+        conversationId: 'conv-1',
+        contactId: 'contact-1',
+      }),
+    )
+    // The send must land before the outcome is acted on.
+    expect(h.engineSendText.mock.invocationCallOrder[0]).toBeLessThan(
+      h.applyLeadOutcome.mock.invocationCallOrder[0],
+    )
+  })
+
+  it('does not apply an outcome when the reply is never sent (cap race lost)', async () => {
+    h.state.claim = false
+    h.generateReply.mockResolvedValue({ text: 'Hi', handoff: false, outcome: 'lost' })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.applyLeadOutcome).not.toHaveBeenCalled()
   })
 })
