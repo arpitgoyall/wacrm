@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from "date-fns";
 import { useTranslations } from "next-intl";
+import { AiLeadCard } from "./ai-lead-card";
 
 interface ContactSidebarProps {
   contact: Contact | null;
@@ -187,6 +188,12 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               </div>
             )}
           </div>
+
+          {/* Divider */}
+          <div className="my-4 border-t border-border" />
+
+          {/* What the AI has learned about this lead */}
+          <AiLeadCard contactId={contact.id} />
 
           {/* Divider */}
           <div className="my-4 border-t border-border" />
