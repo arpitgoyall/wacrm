@@ -1,14 +1,14 @@
 -- Move all scheduled jobs from Vercel Cron to Supabase (pg_cron + pg_net).
 --
 -- pg_cron ticks inside Postgres and uses pg_net to call the app's existing
--- cron endpoints with `Authorization: Bearer <CRON_SECRET>` — the same
--- credential `checkCronAuth` already accepts, so no app auth change is needed.
+-- cron endpoints with `x-cron-secret: <AUTOMATION_CRON_SECRET>` — the header
+-- `checkCronAuth` already accepts, so no app auth change is needed.
 --
 -- ONE-TIME SETUP (run once in the SQL editor, with your real values; they are
 -- stored encrypted in Supabase Vault, never in this migration):
 --
 --   select vault.create_secret('https://your-app-domain.com', 'app_url');
---   select vault.create_secret('<same value as the CRON_SECRET env var>', 'cron_secret');
+--   select vault.create_secret('<same value as the AUTOMATION_CRON_SECRET env var>', 'cron_secret');
 --
 -- To change a value later: select vault.update_secret(id, 'new') from
 -- vault.secrets where name = 'app_url';
@@ -41,7 +41,7 @@ begin
 
   return net.http_get(
     url := rtrim(v_url, '/') || p_path,
-    headers := jsonb_build_object('Authorization', 'Bearer ' || v_secret),
+    headers := jsonb_build_object('x-cron-secret', v_secret),
     timeout_milliseconds := 55000
   );
 end;
