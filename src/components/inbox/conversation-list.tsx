@@ -11,6 +11,7 @@ import {
   normalizeConversations,
 } from '@/lib/inbox/conversations';
 import { cn } from '@/lib/utils';
+import { onDealsChanged } from '@/lib/inbox/deal-events';
 import type { Conversation, Pipeline, PipelineStage, Tag } from '@/types';
 import { Search, ChevronDown, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
@@ -255,18 +256,32 @@ export function ConversationList({
       setDealStagesByContact(next);
     }
 
+    // Coalesce bursts (bulk transfers, AI stage moves) into one reload.
+    let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleReload = () => {
+      if (reloadTimer) clearTimeout(reloadTimer);
+      reloadTimer = setTimeout(() => void loadDealStages(), 300);
+    };
+
     void loadDealStages();
+    // Changes made in this tab (header stage picker) — instant, and works
+    // even if the realtime feed below is lagging.
+    const stopLocal = onDealsChanged(scheduleReload);
+    // Changes made by teammates, the AI agent and automations
+    // (requires `deals` in the supabase_realtime publication, migration 084).
     const channel = supabase
       .channel('inbox-deal-stages')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'deals' },
-        () => void loadDealStages()
+        scheduleReload
       )
       .subscribe();
 
     return () => {
       cancelled = true;
+      if (reloadTimer) clearTimeout(reloadTimer);
+      stopLocal();
       void supabase.removeChannel(channel);
     };
   }, [resyncToken]);

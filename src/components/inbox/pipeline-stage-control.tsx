@@ -20,6 +20,7 @@ import { ChevronDown } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
 import { createClient } from '@/lib/supabase/client';
+import { notifyDealsChanged } from '@/lib/inbox/deal-events';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -158,6 +159,7 @@ export function PipelineStageControl({
       return;
     }
     setDeal(data as DealRow);
+    notifyDealsChanged();
     setCreateOpen(false);
     setAmount('');
   }
@@ -183,6 +185,7 @@ export function PipelineStageControl({
       return;
     }
     setDeal(data as DealRow);
+    notifyDealsChanged();
     setTargetStage(null);
   }
 
