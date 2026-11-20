@@ -191,7 +191,9 @@ export function AiProactiveCard({
                 Re-engage quiet leads
               </p>
               <p className="text-muted-foreground text-xs">
-                Friendly AI follow-ups when the customer stops replying. Stops
+                Friendly AI follow-ups when the customer stops replying in a
+                chat the AI is handling (it auto-replied or sent the opener;
+                flows and broadcasts are left alone). Stops
                 on opt-out words (&quot;stop&quot;, &quot;not interested&quot;,
                 &quot;mat bhejo&quot;), human takeover, or after the max.
               </p>

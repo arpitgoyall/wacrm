@@ -283,6 +283,10 @@ async function runFollowups(
     .eq('ai_autoreply_disabled', false)
     .eq('ai_followup_disabled', false)
     .eq('last_message_sender_type', 'bot')
+    // Only chats the AI itself is part of — either it already auto-replied
+    // here or it sent the lead opener. Flows / automations / broadcasts also
+    // send as 'bot', and those must not get AI nudges layered on top.
+    .or('ai_reply_count.gt.0,ai_outreach_sent_at.not.is.null')
     .lt('ai_followup_count', p.followupMaxAttempts)
     .gte('last_message_at', oldest.toISOString())
     .lte('last_message_at', earliestQuiet.toISOString())
