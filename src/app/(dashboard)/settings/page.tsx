@@ -19,6 +19,7 @@ import { DealsSettings } from '@/components/settings/deals-settings';
 import { NotificationsSettings } from '@/components/settings/notifications-settings';
 import { MembersTab } from '@/components/settings/members-tab';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
+import { McpSettings } from '@/components/settings/mcp-settings';
 import {
   resolveSection,
   SECTION_META,
@@ -100,6 +101,7 @@ function SettingsPageInner() {
     notifications: <NotificationsSettings />,
     members: <MembersTab />,
     api: <ApiKeysSettings />,
+    mcp: <McpSettings />,
   };
 
   return (

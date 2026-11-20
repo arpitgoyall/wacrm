@@ -1,5 +1,6 @@
 import {
   Bell,
+  Cable,
   Coins,
   FileText,
   KeyRound,
@@ -35,6 +36,7 @@ export const SETTINGS_SECTIONS = [
   'notifications',
   'members',
   'api',
+  'mcp',
 ] as const;
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
@@ -63,6 +65,7 @@ export const SECTION_META: Record<SettingsSection, SectionMeta> = {
   notifications: { id: 'notifications', label: 'Notifications', icon: Bell, group: 'workspace' },
   members: { id: 'members', label: 'Team members', icon: UsersRound, group: 'workspace', adminOnly: true },
   api: { id: 'api', label: 'API keys', icon: KeyRound, group: 'workspace', adminOnly: true },
+  mcp: { id: 'mcp', label: 'MCP connector', icon: Cable, group: 'workspace', adminOnly: true },
 };
 
 export const RAIL_GROUPS: { label: string | null; group: SectionMeta['group'] }[] = [
