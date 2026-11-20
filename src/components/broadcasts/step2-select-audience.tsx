@@ -3,6 +3,10 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { parseBroadcastCsv } from '@/lib/broadcast-csv';
+import {
+  createdRange,
+  isCreatedRangeInverted,
+} from '@/lib/broadcast-date-filter';
 import { CustomField, Pipeline, PipelineStage, Tag } from '@/types';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -17,6 +21,7 @@ import {
   ArrowRight,
   ArrowLeft,
   X,
+  CalendarRange,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
@@ -37,6 +42,8 @@ interface AudienceConfig {
   csvContacts?: { phone: string; name?: string; columns?: Record<string, string> }[];
   csvColumns?: string[];
   excludeTagIds?: string[];
+  createdFrom?: string;
+  createdTo?: string;
 }
 
 interface Step2Props {
@@ -247,6 +254,23 @@ export function Step2SelectAudience({
         return;
       }
 
+      // "Added between" — ANDed with whatever the audience type picked.
+      const dates = {
+        createdFrom: audience.createdFrom,
+        createdTo: audience.createdTo,
+      };
+      const range = isCreatedRangeInverted(dates) ? null : createdRange(dates);
+      if (range) {
+        let q = supabase.from('contacts').select('id');
+        if (range.gte) q = q.gte('created_at', range.gte);
+        if (range.lt) q = q.lt('created_at', range.lt);
+        const { data: inRange } = await q;
+        const rangeIds = new Set((inRange ?? []).map((r) => r.id as string));
+        baseIds = baseIds
+          ? new Set([...baseIds].filter((id) => rangeIds.has(id)))
+          : rangeIds;
+      }
+
       // Apply exclude tags
       let excludeSet: Set<string> | null = null;
       if (audience.excludeTagIds && audience.excludeTagIds.length > 0) {
@@ -280,6 +304,8 @@ export function Step2SelectAudience({
     audience.customField,
     audience.csvContacts,
     audience.excludeTagIds,
+    audience.createdFrom,
+    audience.createdTo,
   ]);
 
   useEffect(() => {
@@ -343,8 +369,11 @@ export function Step2SelectAudience({
     onUpdate({ ...audience, customField: { ...prev, ...patch } });
   }
 
+  const dateRangeInverted = isCreatedRangeInverted(audience);
+
   const isValid =
-    audience.type === 'all' ||
+    !dateRangeInverted &&
+    (audience.type === 'all' ||
     (audience.type === 'tags' &&
       audience.tagIds &&
       audience.tagIds.length > 0) ||
@@ -356,7 +385,7 @@ export function Step2SelectAudience({
       audience.customField.value.length > 0) ||
     (audience.type === 'csv' &&
       audience.csvContacts &&
-      audience.csvContacts.length > 0);
+      audience.csvContacts.length > 0));
 
   return (
     <div className="space-y-6">
@@ -613,6 +642,71 @@ export function Step2SelectAudience({
             onChange={handleCsvChange}
             className="hidden"
           />
+        </div>
+      )}
+
+      {/* Added-between filter — narrows any contact-based audience */}
+      {audience.type !== 'csv' && (
+        <div className="border-border bg-card/50 space-y-3 rounded-xl border p-4">
+          <div className="flex items-center gap-2">
+            <CalendarRange className="text-primary h-4 w-4" />
+            <p className="text-foreground text-sm font-medium">
+              {t('selectAudience.addedBetween')}
+            </p>
+          </div>
+          <p className="text-muted-foreground text-xs">
+            {t('selectAudience.addedBetweenDesc')}
+          </p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <label className="space-y-1">
+              <span className="text-muted-foreground text-xs">
+                {t('selectAudience.addedFrom')}
+              </span>
+              <input
+                type="date"
+                value={audience.createdFrom ?? ''}
+                max={audience.createdTo || undefined}
+                onChange={(e) =>
+                  onUpdate({ ...audience, createdFrom: e.target.value || undefined })
+                }
+                className="border-border bg-muted text-foreground focus:border-primary focus:ring-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none focus:ring-1"
+              />
+            </label>
+            <label className="space-y-1">
+              <span className="text-muted-foreground text-xs">
+                {t('selectAudience.addedTo')}
+              </span>
+              <input
+                type="date"
+                value={audience.createdTo ?? ''}
+                min={audience.createdFrom || undefined}
+                onChange={(e) =>
+                  onUpdate({ ...audience, createdTo: e.target.value || undefined })
+                }
+                className="border-border bg-muted text-foreground focus:border-primary focus:ring-primary h-9 w-full rounded-lg border px-2.5 text-sm outline-none focus:ring-1"
+              />
+            </label>
+            {(audience.createdFrom || audience.createdTo) && (
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    onUpdate({ ...audience, createdFrom: undefined, createdTo: undefined })
+                  }
+                  className="border-border text-muted-foreground h-9"
+                >
+                  {t('selectAudience.clearDates')}
+                </Button>
+              </div>
+            )}
+          </div>
+          {dateRangeInverted && (
+            <p className="text-xs text-red-400">
+              {t('selectAudience.dateRangeInverted')}
+            </p>
+          )}
         </div>
       )}
 

@@ -42,6 +42,8 @@ export default function NewBroadcastPage() {
     csvContacts?: { phone: string; name?: string; columns?: Record<string, string> }[];
     csvColumns?: string[];
     excludeTagIds?: string[];
+    createdFrom?: string;
+    createdTo?: string;
   }>({ type: 'all' });
   const [variables, setVariables] = useState<
     Record<string, { type: 'static' | 'field' | 'custom_field' | 'deal' | 'csv_column'; value: string; fallback?: string }>
@@ -63,6 +65,8 @@ export default function NewBroadcastPage() {
           customField: audience.customField,
           csvContacts: audience.csvContacts,
           excludeTagIds: audience.excludeTagIds,
+          createdFrom: audience.createdFrom,
+          createdTo: audience.createdTo,
         },
         variables,
         headerMediaUrl,
@@ -117,6 +121,8 @@ export default function NewBroadcastPage() {
         type: audience.type,
         tagIds: audience.tagIds,
         stageIds: audience.stageIds,
+        createdFrom: audience.createdFrom,
+        createdTo: audience.createdTo,
       },
       status: 'draft',
       total_recipients: 0,

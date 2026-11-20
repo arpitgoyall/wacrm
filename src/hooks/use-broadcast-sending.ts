@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { BATCH_SEND_ATTEMPTS, batchRetryDelayMs } from '@/lib/broadcast-retry';
 import { normalizeKey } from '@/lib/contacts/dedupe';
+import { createdRange, isInCreatedRange } from '@/lib/broadcast-date-filter';
 import { Contact, MessageTemplate } from '@/types';
 
 export type CustomFieldOperator = 'is' | 'is_not' | 'contains';
@@ -24,6 +25,10 @@ export interface AudienceConfig {
   csvContacts?: { phone: string; name?: string; columns?: Record<string, string> }[];
   /** Contacts carrying any of these tags are subtracted from the result. */
   excludeTagIds?: string[];
+  /** Only contacts added on/after this day (`YYYY-MM-DD`, local). ANDed with the rest. */
+  createdFrom?: string;
+  /** Only contacts added on/before this day (`YYYY-MM-DD`, local). ANDed with the rest. */
+  createdTo?: string;
 }
 
 /**
@@ -255,6 +260,15 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
       contacts = contacts.filter((c) => !excludedIds.has(c.id));
     }
 
+    // "Added between" narrows every contact-derived audience. CSV is a
+    // hand-picked list, so it's left as uploaded.
+    if (audience.type !== 'csv') {
+      const range = createdRange(audience);
+      if (range) {
+        contacts = contacts.filter((c) => isInCreatedRange(c.created_at, range));
+      }
+    }
+
     return contacts;
   }
 
@@ -442,6 +456,8 @@ export function useBroadcastSending(): UseBroadcastSendingReturn {
             stageIds: payload.audience.stageIds,
             customField: payload.audience.customField,
             excludeTagIds: payload.audience.excludeTagIds,
+            createdFrom: payload.audience.createdFrom,
+            createdTo: payload.audience.createdTo,
             headerMediaUrl: payload.headerMediaUrl?.trim(),
           },
           status: scheduledAt ? 'draft' : 'sending',
