@@ -13,7 +13,7 @@ import type { AiProvider, LeadCard } from './types';
 export const AI_PROVIDER_DEFAULT_MODEL: Record<AiProvider, string> = {
   openai: 'gpt-5.4-mini',
   openrouter: 'openrouter/free',
-  anthropic: 'claude-haiku-4-5-20251001',
+  anthropic: 'claude-haiku-5-5',
 };
 
 /**

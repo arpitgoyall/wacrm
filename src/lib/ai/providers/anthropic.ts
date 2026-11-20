@@ -35,6 +35,25 @@ function normalizeForAnthropic(messages: ChatMessage[]): ChatMessage[] {
 }
 
 /**
+ * Thinking setting for short WhatsApp replies. Newer Claude models think by
+ * default, and those thinking tokens count against our small
+ * MAX_OUTPUT_TOKENS cap — enough of them can truncate the reply or the
+ * trailing [[META]] line, or leave no text at all. Short chat replies don't
+ * need it, and turning it off also makes replies faster. Each model family
+ * has its own "off" switch; models not listed keep their default.
+ *   - Claude Haiku 5.x: `disabled` (accepted at its default effort).
+ *   - Claude Sonnet 5.5: `disabled` is rejected; `between_tools` is its off mode.
+ */
+export function anthropicThinkingParam(
+  model: string
+): { type: 'disabled' } | { type: 'between_tools' } | undefined {
+  const id = model.trim().toLowerCase()
+  if (id.startsWith('claude-haiku-5')) return { type: 'disabled' }
+  if (id.startsWith('claude-sonnet-5-5')) return { type: 'between_tools' }
+  return undefined
+}
+
+/**
  * Call Anthropic's Messages endpoint with the caller's own key.
  * Returns the raw assistant text + token usage (handoff parsing happens
  * in `generateReply`).
@@ -56,6 +75,9 @@ export async function generateAnthropic(args: ProviderArgs): Promise<ProviderRes
         system: systemPrompt,
         max_tokens: MAX_OUTPUT_TOKENS,
         messages: normalizeForAnthropic(messages),
+        ...(anthropicThinkingParam(model)
+          ? { thinking: anthropicThinkingParam(model) }
+          : {}),
       }),
       signal: AbortSignal.timeout(timeoutMs),
     })
