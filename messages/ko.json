@@ -605,6 +605,10 @@
       "noContact": "연락처 없음",
       "callContact": "연락처에 전화",
       "openWhatsAppInbox": "WhatsApp 받은 편지함 열기",
+      "callAttempts": "통화 시도",
+      "callAttemptsDecrease": "통화 시도 줄이기",
+      "callAttemptsIncrease": "통화 시도 늘리기",
+      "callAttemptsError": "통화 시도를 업데이트하지 못했습니다. 다시 시도하세요.",
       "selectForTransfer": "{title} 이관 선택",
       "won": "성사",
       "lost": "실패"

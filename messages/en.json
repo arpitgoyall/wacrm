@@ -605,6 +605,10 @@
       "noContact": "No contact",
       "callContact": "Call contact",
       "openWhatsAppInbox": "Open WhatsApp inbox",
+      "callAttempts": "Call attempts",
+      "callAttemptsDecrease": "Decrease call attempts",
+      "callAttemptsIncrease": "Increase call attempts",
+      "callAttemptsError": "Couldn't update call attempts. Try again.",
       "selectForTransfer": "Select {title} for transfer",
       "won": "Won",
       "lost": "Lost"

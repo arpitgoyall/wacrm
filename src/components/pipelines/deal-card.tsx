@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/currency";
 import { useTranslations } from "next-intl";
 import { CreatedAge } from "@/components/created-age";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CallAttemptsCounter } from "./call-attempts-counter";
 
 interface DealCardProps {
   deal: Deal;
@@ -156,6 +157,13 @@ export function DealCard({
             {formatDate(deal.expected_close_date)}
           </span>
         )}
+      </div>
+      <div className="mt-2">
+        <CallAttemptsCounter
+          dealId={deal.id}
+          initial={deal.call_attempts ?? 0}
+          readOnly={isOverlay || !!selection}
+        />
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
         <CreatedAge createdAt={deal.created_at} />

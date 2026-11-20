@@ -453,6 +453,8 @@ export interface Deal {
   lost_reason?: string | null;
   /** Values keyed by PipelineStage.custom_fields[].id. */
   custom_values?: Record<string, string>;
+  /** Times a counsellor tried calling this lead (migration 083). */
+  call_attempts?: number;
   created_at: string;
   updated_at?: string;
   contact?: Contact;
