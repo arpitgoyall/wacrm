@@ -190,8 +190,12 @@ export function AiQualificationCard({
             }
             disabled={disabled}
           >
-            <SelectTrigger>
-              <SelectValue />
+            <SelectTrigger className="w-full min-w-0">
+              {/* Base UI shows the raw value (an id) unless given a label. */}
+              <SelectValue>
+                {pipelines.find((p) => p.id === value.pipelineId)?.name ??
+                  (value.pipelineId ? 'Loading…' : 'Don’t move deals')}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={NONE}>Don&apos;t move deals</SelectItem>
@@ -217,7 +221,10 @@ export function AiQualificationCard({
                   disabled={disabled}
                 >
                   <SelectTrigger className="w-full min-w-0">
-                    <SelectValue />
+                    <SelectValue>
+                      {pipelineStages.find((s) => s.id === value[f.key])?.name ??
+                        (value[f.key] ? 'Loading…' : 'Don’t move')}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={NONE}>Don&apos;t move</SelectItem>

@@ -337,7 +337,7 @@ export function AiConfig() {
                   disabled={disabled}
                 >
                   <SelectTrigger className="w-full min-w-0">
-                    <SelectValue />
+                    <SelectValue>{PROVIDER_LABEL[provider]}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="openai">
@@ -590,8 +590,16 @@ export function AiConfig() {
                 }
                 disabled={disabled || !autoReplyEnabled}
               >
-                <SelectTrigger id="ai-handoff">
-                  <SelectValue />
+                <SelectTrigger id="ai-handoff" className="w-full min-w-0">
+                  {/* Base UI shows the raw value (a user id) unless given a label. */}
+                  <SelectValue>
+                    {handoffAgentId
+                      ? (() => {
+                          const m = members.find((x) => x.user_id === handoffAgentId);
+                          return m ? memberLabel(m) : 'Loading…';
+                        })()
+                      : t('handoffQueue')}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={HANDOFF_QUEUE}>
