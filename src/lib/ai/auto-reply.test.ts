@@ -8,6 +8,8 @@ const h = vi.hoisted(() => ({
   retrieveKnowledge: vi.fn(),
   generateReply: vi.fn(),
   engineSendText: vi.fn(),
+  pickHandoffAgent: vi.fn(),
+  fireConversationAssigned: vi.fn(),
   state: {
     conv: null as Record<string, unknown> | null,
     autoResponders: [] as { id: string }[],
@@ -22,6 +24,10 @@ vi.mock('./context', () => ({ buildConversationContext: h.buildConversationConte
 vi.mock('./knowledge', () => ({ retrieveKnowledge: h.retrieveKnowledge }))
 vi.mock('./generate', () => ({ generateReply: h.generateReply }))
 vi.mock('@/lib/flows/meta-send', () => ({ engineSendText: h.engineSendText }))
+vi.mock('./handoff-assign', () => ({
+  pickHandoffAgent: h.pickHandoffAgent,
+  fireConversationAssigned: h.fireConversationAssigned,
+}))
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
@@ -96,6 +102,8 @@ beforeEach(() => {
   h.retrieveKnowledge.mockResolvedValue([])
   h.generateReply.mockResolvedValue({ text: 'Hello!', handoff: false })
   h.engineSendText.mockResolvedValue({ whatsapp_message_id: 'm1' })
+  h.pickHandoffAgent.mockReset().mockResolvedValue('agent-auto')
+  h.fireConversationAssigned.mockReset().mockResolvedValue(undefined)
 })
 
 describe('dispatchInboundToAiReply — eligibility gates', () => {
@@ -187,26 +195,50 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
 })
 
 describe('dispatchInboundToAiReply — handoff', () => {
-  it('disables auto-reply, writes a summary, and does not send on handoff', async () => {
+  it('pauses the bot, writes a summary, sends nothing, and auto-assigns the least-busy agent', async () => {
     h.generateReply.mockResolvedValue({ text: '', handoff: true })
     await dispatchInboundToAiReply(ARGS)
+    // The customer-facing message is the account's conversation_assigned
+    // automation's job, not the AI's.
     expect(h.engineSendText).not.toHaveBeenCalled()
     expect(h.state.rpcCalls).toHaveLength(0)
-    expect(h.state.updatePayload).toMatchObject({ ai_autoreply_disabled: true })
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+      assigned_agent_id: 'agent-auto',
+    })
     expect(h.state.updatePayload?.ai_handoff_summary).toContain(
       'AI agent handed off',
     )
-    // No handoff target configured → conversation left unassigned.
-    expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+    expect(h.fireConversationAssigned).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        contactId: 'contact-1',
+        agentId: 'agent-auto',
+      }),
+    )
   })
 
-  it('routes to the configured handoff agent on handoff', async () => {
+  it('routes to the configured handoff agent and fires the assigned automation', async () => {
     h.loadAiConfig.mockResolvedValue(aiConfig({ handoffAgentId: 'agent-7' }))
     h.generateReply.mockResolvedValue({ text: '', handoff: true })
     await dispatchInboundToAiReply(ARGS)
+    expect(h.pickHandoffAgent).not.toHaveBeenCalled()
     expect(h.state.updatePayload).toMatchObject({
       ai_autoreply_disabled: true,
       assigned_agent_id: 'agent-7',
     })
+    expect(h.fireConversationAssigned).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ agentId: 'agent-7' }),
+    )
+  })
+
+  it('leaves the chat unassigned and fires no automation when nobody is available', async () => {
+    h.pickHandoffAgent.mockResolvedValue(null)
+    h.generateReply.mockResolvedValue({ text: '', handoff: true })
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.state.updatePayload).not.toHaveProperty('assigned_agent_id')
+    expect(h.fireConversationAssigned).not.toHaveBeenCalled()
   })
 })

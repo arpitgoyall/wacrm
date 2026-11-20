@@ -7,6 +7,8 @@ import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
+import type { ChatMessage } from './types'
+import { fireConversationAssigned, pickHandoffAgent } from './handoff-assign'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
@@ -44,6 +46,50 @@ interface DispatchArgs {
  * reacting to a customer message that just landed — so no separate
  * window check is needed.
  */
+/** Alert owner + admins that the AI handed a chat to a human. Reuses the
+ *  `new_conversation` notification type, which the inbox clears once the
+ *  conversation is opened and which already drives web push. */
+async function notifyHandoffToTeam(
+  db: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  conversationId: string,
+  contactId: string,
+  messages: ChatMessage[],
+): Promise<void> {
+  try {
+    const { data: recipients } = await db
+      .from('profiles')
+      .select('user_id')
+      .eq('account_id', accountId)
+      .in('account_role', ['owner', 'admin'])
+    if (!recipients?.length) return
+
+    const { data: contact } = await db
+      .from('contacts')
+      .select('name, phone')
+      .eq('id', contactId)
+      .maybeSingle()
+    const who = contact?.name?.trim() || contact?.phone || 'A customer'
+    const last = latestUserMessage(messages)
+
+    const { error } = await db.from('notifications').insert(
+      (recipients as { user_id: string }[]).map((r) => ({
+        account_id: accountId,
+        user_id: r.user_id,
+        type: 'new_conversation' as const,
+        conversation_id: conversationId,
+        contact_id: contactId,
+        actor_user_id: null,
+        title: 'AI needs a human',
+        body: `${who}: “${last.slice(0, 100)}” — the AI handed this chat to your team.`,
+      })),
+    )
+    if (error) console.error('[ai auto-reply] handoff notification failed:', error.message)
+  } catch (err) {
+    console.error('[ai auto-reply] handoff notification threw:', err)
+  }
+}
+
 export async function dispatchInboundToAiReply(
   args: DispatchArgs,
 ): Promise<void> {
@@ -174,12 +220,42 @@ export async function dispatchInboundToAiReply(
         ai_autoreply_disabled: true,
         ai_handoff_summary: summary,
       }
-      // Only set the assignee when a target is configured AND the thread
-      // isn't already owned — never stomp an existing human assignment.
-      if (config.handoffAgentId && !conv.assigned_agent_id) {
-        update.assigned_agent_id = config.handoffAgentId
+      // Always route to a person (never stomp an existing assignment): the
+      // configured handoff agent, else the least-busy agent. The customer
+      // message to the customer is left to the account's own
+      // `conversation_assigned` automation, which we fire below.
+      if (!conv.assigned_agent_id) {
+        let assignee: string | null = config.handoffAgentId
+        if (!assignee) {
+          try {
+            assignee = await pickHandoffAgent(db, accountId)
+          } catch (err) {
+            console.error('[ai auto-reply] picking a handoff agent failed:', err)
+          }
+        }
+        if (assignee) update.assigned_agent_id = assignee
       }
       await db.from('conversations').update(update).eq('id', conversationId)
+
+      const assignedTo = update.assigned_agent_id as string | undefined
+      if (assignedTo) {
+        // The DB trigger notifies the assignee; the automation is fired by
+        // app code, so do it here (same as the manual assign route).
+        try {
+          await fireConversationAssigned(db, {
+            accountId,
+            conversationId,
+            contactId,
+            agentId: assignedTo,
+          })
+        } catch (err) {
+          console.error('[ai auto-reply] conversation_assigned automation failed:', err)
+        }
+      } else {
+        // Nobody could be assigned (no members) — ping owner + admins so the
+        // chat doesn't sit unnoticed in the queue.
+        await notifyHandoffToTeam(db, accountId, conversationId, contactId, messages)
+      }
       return
     }
 
