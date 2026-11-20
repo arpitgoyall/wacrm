@@ -102,3 +102,36 @@ describe('parseGeneration — [[SPLIT]] multi-message replies', () => {
     expect(parseGeneration('One[[SPLIT]]  ').parts).toBeUndefined()
   })
 })
+
+describe('parseGeneration — tracking JSON without the [[META]] marker', () => {
+  const leaked =
+    "That's a fun hobby to have, Arpit! 😊 Would you like to see a demo class clip?\n\n" +
+    '{"outcome":"continue","lead":{"name":"Arpit","occupation":"BCA student","goal":"hobby","experience":"","intent":"low","objection":"","city":""}}'
+
+  it('strips and parses a bare trailing JSON line (the leak seen in production)', () => {
+    const r = parseGeneration(leaked)
+    expect(r.text).toBe("That's a fun hobby to have, Arpit! 😊 Would you like to see a demo class clip?")
+    expect(r.text).not.toContain('outcome')
+    expect(r.outcome).toBe('continue')
+    expect(r.lead).toEqual({ name: 'Arpit', occupation: 'BCA student', goal: 'hobby', intent: 'low' })
+  })
+
+  it.each([
+    ['[META] {"outcome":"lost"}'],
+    ['META: {"outcome":"lost"}'],
+    ['```json\n{"outcome":"lost"}\n```'],
+  ])('handles marker variant %s', (tail) => {
+    const r = parseGeneration(`No worries at all!\n${tail}`)
+    expect(r.text).toBe('No worries at all!')
+    expect(r.outcome).toBe('lost')
+  })
+
+  it('still strips a malformed bare JSON tail so it never reaches the customer', () => {
+    const r = parseGeneration('Sure!\n{"outcome":"continue","lead":{"name":')
+    expect(r.text).toBe('Sure!')
+  })
+
+  it('leaves normal replies with braces alone', () => {
+    expect(parseGeneration('Use code {DRONE10} at checkout').text).toBe('Use code {DRONE10} at checkout')
+  })
+})

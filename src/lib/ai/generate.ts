@@ -82,10 +82,10 @@ export function parseGeneration(
   let body = raw;
   let outcome: LeadOutcome | null = null;
   let lead: LeadCard | null = null;
-  const metaAt = raw.indexOf(META_SENTINEL);
+  const metaAt = findMetaStart(raw);
   if (metaAt !== -1) {
-    body = raw.slice(0, metaAt);
-    const parsed = parseMeta(raw.slice(metaAt + META_SENTINEL.length));
+    body = stripMetaLeadIn(raw.slice(0, metaAt));
+    const parsed = parseMeta(raw.slice(metaAt));
     outcome = parsed.outcome;
     lead = parsed.lead;
   }
@@ -124,6 +124,27 @@ export function parseGeneration(
   }
   if (skip) result.skip = true;
   return result;
+}
+
+/** The start of the trailing `{"outcome": …}` tracking JSON. Matches it
+ *  with or without the [[META]] marker — models sometimes drop the marker,
+ *  and that JSON must never reach the customer. Returns -1 when absent. */
+const META_JSON_RE = /\{\s*"(?:outcome|lead)"\s*:/g;
+
+function findMetaStart(raw: string): number {
+  const marker = raw.indexOf(META_SENTINEL);
+  if (marker !== -1) return marker;
+  let last = -1;
+  for (const m of raw.matchAll(META_JSON_RE)) last = m.index ?? -1;
+  return last;
+}
+
+/** Drop marker look-alikes / code fences left just before the JSON
+ *  (`[META]`, `META:`, ```json …). */
+function stripMetaLeadIn(text: string): string {
+  return text
+    .replace(/(?:\[\[?\s*META\s*\]?\]|META\s*:|```(?:json)?)\s*$/i, '')
+    .replace(/```(?:json)?\s*$/i, '');
 }
 
 const OUTCOMES: readonly LeadOutcome[] = [

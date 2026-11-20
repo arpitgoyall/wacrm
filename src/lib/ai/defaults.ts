@@ -143,7 +143,7 @@ export function buildSystemPrompt(args: {
       'Lead qualification: your goal is to move this lead to "qualified" — or recognise when they are lost — while being genuinely helpful. ' +
         `Known about this lead so far: ${Object.keys(known).length ? JSON.stringify(known) : 'nothing yet'}. Do not ask again for what is known. ` +
         'To qualify a lead you need their name, what they do and why they are interested: learn missing ones naturally, at most ONE such question per message and only when it fits the flow. Never interrogate.\n\n' +
-        `After your message, add a new line that starts with ${META_SENTINEL} followed by ONE line of JSON, exactly like:\n` +
+        `After your message, add a new line that starts with ${META_SENTINEL} followed by ONE line of JSON — the ${META_SENTINEL} marker is required, never write the JSON without it. Exactly like:\n` +
         `${META_SENTINEL} {"outcome":"continue","lead":{"name":"","occupation":"","goal":"","experience":"","intent":"","objection":"","city":""}}\n` +
         'Only fill lead fields with facts the customer actually stated (short phrases); leave the rest empty. "intent" is low, medium or high.\n' +
         'outcome must be one of:\n' +
