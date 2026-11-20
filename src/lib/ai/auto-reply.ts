@@ -9,6 +9,8 @@ import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
+import { decrypt } from '@/lib/whatsapp/encryption'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -18,6 +20,9 @@ interface DispatchArgs {
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
   configOwnerUserId: string
+  /** Meta id (wamid) of the inbound message being answered. When present,
+   *  the customer sees WhatsApp's "typing…" bubble while the AI works. */
+  inboundMessageId?: string
 }
 
 /**
@@ -96,6 +101,27 @@ export async function dispatchInboundToAiReply(
         `[ai auto-reply] account ${accountId} hit the per-account rate limit — skipping this inbound.`,
       )
       return
+    }
+
+    // Show "typing…" to the customer while we generate. Best-effort and
+    // awaited briefly (5s cap) so it lands before the slow LLM call starts.
+    if (args.inboundMessageId) {
+      const { data: wa } = await db
+        .from('whatsapp_config')
+        .select('phone_number_id, access_token')
+        .eq('account_id', accountId)
+        .maybeSingle()
+      if (wa?.phone_number_id && wa.access_token) {
+        try {
+          await sendTypingIndicator({
+            phoneNumberId: wa.phone_number_id,
+            accessToken: decrypt(wa.access_token),
+            messageId: args.inboundMessageId,
+          })
+        } catch (err) {
+          console.warn('[ai auto-reply] typing indicator skipped:', err)
+        }
+      }
     }
 
     // Ground the reply in the account's knowledge base (best-effort).

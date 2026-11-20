@@ -296,6 +296,50 @@ export async function sendTextMessage(
   return { messageId: data.messages[0].id }
 }
 
+export interface SendTypingIndicatorArgs {
+  phoneNumberId: string
+  accessToken: string
+  /** Meta's id (wamid) of the customer's inbound message being answered. */
+  messageId: string
+}
+
+/**
+ * Show the "typing…" bubble in the customer's WhatsApp chat.
+ *
+ * Meta's typing indicator is attached to an inbound message: it also marks
+ * that message as read (blue ticks), and the bubble stays for up to ~25s or
+ * until the next outbound message is delivered. Purely cosmetic, so this is
+ * best-effort — it logs and swallows every failure and never throws.
+ */
+export async function sendTypingIndicator(
+  args: SendTypingIndicatorArgs
+): Promise<void> {
+  try {
+    const response = await fetch(`${META_API_BASE}/${args.phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${args.accessToken}`,
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: args.messageId,
+        typing_indicator: { type: 'text' },
+      }),
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!response.ok) {
+      console.warn(
+        `[meta-api] typing indicator rejected (${response.status}):`,
+        await response.text().catch(() => '')
+      )
+    }
+  } catch (err) {
+    console.warn('[meta-api] typing indicator failed:', err)
+  }
+}
+
 export type MediaKind = 'image' | 'video' | 'document' | 'audio'
 
 export interface SendMediaMessageArgs {
