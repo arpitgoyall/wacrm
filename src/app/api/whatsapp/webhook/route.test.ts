@@ -195,7 +195,10 @@ vi.mock('@/lib/automations/engine', () => ({
 vi.mock('@/lib/flows/engine', () => ({
   dispatchInboundToFlows: h.dispatchInboundToFlows,
 }))
-vi.mock('@/lib/ai/auto-reply', () => ({
+vi.mock('@/lib/ai/auto-reply', async (importActual) => ({
+  // Real classifier (pure), mocked dispatcher.
+  classifyInbound: (await importActual<typeof import('@/lib/ai/auto-reply')>())
+    .classifyInbound,
   dispatchInboundToAiReply: h.dispatchInboundToAiReply,
 }))
 vi.mock('@/lib/webhooks/deliver', () => ({
@@ -371,9 +374,12 @@ describe('inbound webhook: template quick-reply buttons (#478)', () => {
       (call) => (call[0] as { triggerType: string }).triggerType,
     )
     expect(triggers).toContain('interactive_reply')
-    // The AI auto-reply must stay out of it — a button tap is not a
-    // free-text question.
-    expect(h.dispatchInboundToAiReply).not.toHaveBeenCalled()
+    // The tap (not consumed by a flow) goes to the AI as readable text,
+    // flagged as a tap so the AI stands down if an interactive_reply
+    // automation owns taps. Previously taps were silently dropped.
+    expect(h.dispatchInboundToAiReply).toHaveBeenCalledWith(
+      expect.objectContaining({ inboundKind: 'text', inboundIsTap: true }),
+    )
   })
 
   it('falls back to the label when the template button carries no payload', async () => {

@@ -10,7 +10,7 @@ import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger, runAutomationById } from '@/lib/automations/engine'
 import { dispatchInboundToFlows } from '@/lib/flows/engine'
 import { resolveAdBinding } from '@/lib/ads/bindings'
-import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
+import { classifyInbound, dispatchInboundToAiReply } from '@/lib/ai/auto-reply'
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver'
 import { deleteDeliveredTemporaryTemplate } from '@/lib/whatsapp/temporary-template'
 import {
@@ -1234,19 +1234,26 @@ async function processMessage(
     )
   }
 
-  // AI auto-reply. Runs only for plain-text inbound the deterministic
-  // flow runner did NOT consume (flows win over the LLM), and only when
-  // the account has enabled it. Awaited inside `after()` (same reason as
-  // the webhook dispatch below); `dispatchInboundToAiReply` owns its
-  // eligibility gates + try/catch and never throws.
-  if (!flowConsumed && !interactiveReplyId && inboundText.trim()) {
-    await dispatchInboundToAiReply({
-      accountId,
-      conversationId: conversation.id,
-      contactId: contactRecord.id,
-      configOwnerUserId,
-      inboundMessageId: message.id,
-    })
+  // AI auto-reply for anything the deterministic flow runner did NOT
+  // consume (flows win over the LLM), when the account has enabled it.
+  // Text, captions and button taps get an AI answer; voice notes, files
+  // and other content the AI can't read hand off to a human instead of
+  // going unanswered. Awaited inside `after()` (same reason as the webhook
+  // dispatch below); `dispatchInboundToAiReply` owns its eligibility gates
+  // + try/catch and never throws.
+  if (!flowConsumed) {
+    const inboundKind = classifyInbound(message.type, inboundText)
+    if (inboundKind !== 'ignore') {
+      await dispatchInboundToAiReply({
+        accountId,
+        conversationId: conversation.id,
+        contactId: contactRecord.id,
+        configOwnerUserId,
+        inboundMessageId: message.id,
+        inboundKind,
+        inboundIsTap: !!interactiveReplyId,
+      })
+    }
   }
 
   // message.received webhook (public API). Awaited — not fire-and-forget

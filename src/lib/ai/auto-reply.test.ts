@@ -17,6 +17,10 @@ const h = vi.hoisted(() => ({
     autoResponders: [] as { id: string }[],
     claim: true as boolean,
     updatePayload: null as Record<string, unknown> | null,
+    /** Whether the guarded handoff update matches (false = already handed off). */
+    handoffClaim: true as boolean,
+    /** wamid of the newest customer message (debounce check). */
+    latestCustomerMsgId: null as string | null,
     rpcCalls: [] as { name: string; args: unknown }[],
   },
 }))
@@ -37,6 +41,22 @@ vi.mock('./handoff-assign', () => ({
 vi.mock('./admin-client', () => ({
   supabaseAdmin: () => ({
     from: (table: string) => {
+      if (table === 'messages' || table === 'whatsapp_config') {
+        // Debounce lookup: newest customer message. (whatsapp_config has
+        // no creds here, so the typing indicator is skipped.)
+        const chain: Record<string, unknown> = {
+          select: () => chain,
+          eq: () => chain,
+          order: () => chain,
+          limit: () => chain,
+          maybeSingle: () =>
+            Promise.resolve({
+              data: table === 'messages' ? { message_id: h.state.latestCustomerMsgId } : null,
+              error: null,
+            }),
+        }
+        return chain
+      }
       if (table === 'automations') {
         // .select().eq().eq().in().limit() → active auto-responders
         const chain = {
@@ -58,7 +78,17 @@ vi.mock('./admin-client', () => ({
         }),
         update: (payload: Record<string, unknown>) => {
           h.state.updatePayload = payload
-          return { eq: () => Promise.resolve({ error: null }) }
+          // Chainable + awaitable: supports both `.eq()` and the guarded
+          // handoff's `.eq().eq().is().select()`.
+          const chain: Record<string, unknown> = {
+            eq: () => chain,
+            is: () => chain,
+            select: () =>
+              Promise.resolve({ data: h.state.handoffClaim ? [{ id: 'conv-1' }] : [], error: null }),
+            then: (resolve: (v: unknown) => unknown) =>
+              Promise.resolve({ error: null }).then(resolve),
+          }
+          return chain
         },
       }
     },
@@ -102,6 +132,8 @@ beforeEach(() => {
   h.state.autoResponders = []
   h.state.claim = true
   h.state.updatePayload = null
+  h.state.handoffClaim = true
+  h.state.latestCustomerMsgId = null
   h.state.rpcCalls = []
   h.loadAiConfig.mockResolvedValue(aiConfig())
   h.buildConversationContext.mockResolvedValue([{ role: 'user', content: 'hi' }])
@@ -184,7 +216,7 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     expect(h.engineSendText).not.toHaveBeenCalled()
   })
 
-  it('skips when the per-conversation cap is reached', async () => {
+  it('hands off (never goes silent) when the per-conversation cap is reached', async () => {
     h.state.conv = {
       assigned_agent_id: null,
       ai_autoreply_disabled: false,
@@ -192,6 +224,13 @@ describe('dispatchInboundToAiReply — eligibility gates', () => {
     }
     await dispatchInboundToAiReply(ARGS)
     expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.state.updatePayload).toMatchObject({
+      ai_autoreply_disabled: true,
+      assigned_agent_id: 'agent-auto',
+    })
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('reply limit')
+    expect(h.fireConversationAssigned).toHaveBeenCalledTimes(1)
   })
 
   it('skips when there is nothing to reply to', async () => {
@@ -313,5 +352,79 @@ describe('typingPauseMs', () => {
     const { typingPauseMs } = await import('./auto-reply')
     expect(typingPauseMs('ok')).toBe(1200)
     expect(typingPauseMs('x'.repeat(500))).toBe(4000)
+  })
+})
+
+describe('dispatchInboundToAiReply — media and races', () => {
+  it('hands a voice note to a human without calling the model', async () => {
+    await dispatchInboundToAiReply({ ...ARGS, inboundKind: 'unreadable' })
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('voice note')
+    expect(h.fireConversationAssigned).toHaveBeenCalledTimes(1)
+  })
+
+  it('does nothing for a sticker / reaction', async () => {
+    await dispatchInboundToAiReply({ ...ARGS, inboundKind: 'ignore' })
+    expect(h.loadAiConfig).not.toHaveBeenCalled()
+  })
+
+  it('does not assign or fire the automation twice when the chat was already handed off', async () => {
+    h.state.handoffClaim = false // a concurrent run won the guarded update
+    await dispatchInboundToAiReply({ ...ARGS, inboundKind: 'unreadable' })
+    expect(h.fireConversationAssigned).not.toHaveBeenCalled()
+  })
+
+  it('hands off when it loses the race for the last reply slot', async () => {
+    h.state.claim = false
+    await dispatchInboundToAiReply(ARGS)
+    expect(h.engineSendText).not.toHaveBeenCalled()
+    expect(h.state.updatePayload?.ai_handoff_summary).toContain('reply limit')
+  })
+})
+
+describe('classifyInbound', () => {
+  it.each([
+    ['text', 'hi', 'text'],
+    ['interactive', 'Yes, interested', 'text'],
+    ['button', 'Know more', 'text'],
+    ['image', 'is this the kit?', 'text'],
+    ['image', '', 'unreadable'],
+    ['audio', '', 'unreadable'],
+    ['document', 'resume.pdf', 'unreadable'],
+    ['location', 'Pune', 'unreadable'],
+    ['sticker', '', 'ignore'],
+    ['reaction', '👍', 'ignore'],
+    ['text', '   ', 'ignore'],
+  ])('%s with "%s" → %s', async (type, text, expected) => {
+    const { classifyInbound } = await import('./auto-reply')
+    expect(classifyInbound(type, text)).toBe(expected)
+  })
+})
+
+describe('dispatchInboundToAiReply — quick-succession debounce', () => {
+  async function runWithTimers(args: Parameters<typeof dispatchInboundToAiReply>[0]) {
+    vi.useFakeTimers()
+    try {
+      const run = dispatchInboundToAiReply(args)
+      await vi.runAllTimersAsync()
+      await run
+    } finally {
+      vi.useRealTimers()
+    }
+  }
+
+  it('stands down when the customer sent a newer message (that run answers all of it)', async () => {
+    h.state.latestCustomerMsgId = 'wamid.NEWER'
+    await runWithTimers({ ...ARGS, inboundMessageId: 'wamid.OLDER' })
+    expect(h.generateReply).not.toHaveBeenCalled()
+    expect(h.engineSendText).not.toHaveBeenCalled()
+  })
+
+  it('replies when this is still the newest message', async () => {
+    h.state.latestCustomerMsgId = 'wamid.ONLY'
+    await runWithTimers({ ...ARGS, inboundMessageId: 'wamid.ONLY' })
+    expect(h.generateReply).toHaveBeenCalledTimes(1)
+    expect(h.engineSendText).toHaveBeenCalledTimes(1)
   })
 })

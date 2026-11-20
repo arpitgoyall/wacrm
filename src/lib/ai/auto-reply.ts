@@ -7,13 +7,44 @@ import { buildSystemPrompt } from './defaults'
 import { buildHandoffSummary } from './handoff'
 import { logAiUsage } from './usage'
 import { latestUserMessage } from './query'
-import type { ChatMessage } from './types'
+import type { AiConfig, ChatMessage } from './types'
 import { fireConversationAssigned, pickHandoffAgent } from './handoff-assign'
 import { applyLeadOutcome, loadLeadContact } from './lead-outcome'
 import { engineSendText } from '@/lib/flows/meta-send'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
+
+/**
+ * What the AI can do with an inbound message:
+ *   - `text`       — readable text (typed text, a caption, a button tap)
+ *   - `unreadable` — content the AI can't understand (voice note, photo or
+ *                    video without caption, document, location): a human
+ *                    must look, so the chat is handed off
+ *   - `ignore`     — nothing to answer (sticker, reaction, empty)
+ */
+export type InboundKind = 'text' | 'unreadable' | 'ignore'
+
+export function classifyInbound(type: string, text: string): InboundKind {
+  const hasText = text.trim().length > 0
+  switch (type) {
+    case 'text':
+    case 'interactive': // list / reply-button tap
+    case 'button': // template quick-reply tap
+      return hasText ? 'text' : 'ignore'
+    case 'image':
+    case 'video':
+      return hasText ? 'text' : 'unreadable' // caption → readable
+    case 'sticker':
+    case 'reaction':
+      return 'ignore'
+    case 'audio':
+    case 'document':
+    case 'location':
+    default:
+      return 'unreadable'
+  }
+}
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -23,30 +54,27 @@ interface DispatchArgs {
   /** The account's WhatsApp config owner, used for the outbound send's
    *  audit columns (mirrors how the flow runner passes it through). */
   configOwnerUserId: string
-  /** Meta id (wamid) of the inbound message being answered. When present,
-   *  the customer sees WhatsApp's "typing…" bubble while the AI works. */
+  /** Meta id (wamid) of the inbound message being answered. Drives the
+   *  "typing…" bubble and the quick-succession debounce. */
   inboundMessageId?: string
+  /** Defaults to `text`. See {@link classifyInbound}. */
+  inboundKind?: InboundKind
+  /** The inbound was a button / list tap. If an active `interactive_reply`
+   *  automation exists it owns taps, and the AI stands down. */
+  inboundIsTap?: boolean
 }
 
 /**
- * AI auto-reply for a freshly-arrived inbound message.
- *
- * Invoked from the WhatsApp webhook's `after()` block, only when no
- * deterministic flow consumed the message (flows win). Mirrors the flow
- * runner's contract: it owns its try/catch and NEVER throws — a failing
- * or slow LLM call must not affect the webhook's 200 to Meta.
- *
- * Eligibility gates (any → silent no-op):
- *   - AI off / auto-reply disabled for the account
- *   - a human agent is assigned (they own the thread)
- *   - auto-reply was disabled for this conversation (prior handoff)
- *   - the per-conversation reply cap is reached
- *   - there's nothing to reply to
- *
- * The 24h WhatsApp session window is inherently open here — we're
- * reacting to a customer message that just landed — so no separate
- * window check is needed.
+ * How long to wait after an inbound message before answering, so a lead
+ * who sends "hi" / "I want info" / "price?" in quick succession gets ONE
+ * reply covering all of it instead of three. Override with
+ * `AI_REPLY_DEBOUNCE_MS` (0 disables).
  */
+function replyDebounceMs(): number {
+  const raw = Number(process.env.AI_REPLY_DEBOUNCE_MS)
+  return Number.isFinite(raw) && raw >= 0 ? raw : 4000
+}
+
 /** Alert owner + admins that the AI handed a chat to a human. Reuses the
  *  `new_conversation` notification type, which the inbox clears once the
  *  conversation is opened and which already drives web push. */
@@ -82,12 +110,76 @@ async function notifyHandoffToTeam(
         contact_id: contactId,
         actor_user_id: null,
         title: 'AI needs a human',
-        body: `${who}: “${last.slice(0, 100)}” — the AI handed this chat to your team.`,
+        body: last
+          ? `${who}: “${last.slice(0, 100)}” — the AI handed this chat to your team.`
+          : `${who} needs a human — the AI handed this chat to your team.`,
       })),
     )
     if (error) console.error('[ai auto-reply] handoff notification failed:', error.message)
   } catch (err) {
     console.error('[ai auto-reply] handoff notification threw:', err)
+  }
+}
+
+/**
+ * Hand the conversation to a person — the one path for every reason (the
+ * model asked for a human, the reply cap was hit, the customer sent a
+ * voice note the AI can't hear). Pauses the AI here, assigns the
+ * configured handoff agent or the least-busy agent, and fires the
+ * account's `conversation_assigned` automation (which owns the customer
+ * message). With nobody to assign, owner + admins are notified instead.
+ */
+async function handOffToHuman(
+  db: ReturnType<typeof supabaseAdmin>,
+  args: {
+    accountId: string
+    conversationId: string
+    contactId: string
+    config: AiConfig
+    summary: string
+    messages: ChatMessage[]
+  },
+): Promise<void> {
+  const { accountId, conversationId, contactId, config } = args
+  let assignee: string | null = config.handoffAgentId
+  if (!assignee) {
+    try {
+      assignee = await pickHandoffAgent(db, accountId)
+    } catch (err) {
+      console.error('[ai auto-reply] picking a handoff agent failed:', err)
+    }
+  }
+
+  const update: Record<string, unknown> = {
+    ai_autoreply_disabled: true,
+    ai_handoff_summary: args.summary,
+  }
+  if (assignee) update.assigned_agent_id = assignee
+
+  // Guarded so two concurrent handoffs (e.g. quick messages racing) assign
+  // and notify only once; never stomps an assignment a human just made.
+  const { data: claimed } = await db
+    .from('conversations')
+    .update(update)
+    .eq('id', conversationId)
+    .eq('ai_autoreply_disabled', false)
+    .is('assigned_agent_id', null)
+    .select('id')
+  if (!claimed?.length) return
+
+  if (assignee) {
+    try {
+      await fireConversationAssigned(db, {
+        accountId,
+        conversationId,
+        contactId,
+        agentId: assignee,
+      })
+    } catch (err) {
+      console.error('[ai auto-reply] conversation_assigned automation failed:', err)
+    }
+  } else {
+    await notifyHandoffToTeam(db, accountId, conversationId, contactId, args.messages)
   }
 }
 
@@ -99,10 +191,25 @@ export function typingPauseMs(message: string): number {
   return Math.min(4000, Math.max(1200, 600 + message.length * 35))
 }
 
+/**
+ * AI auto-reply for a freshly-arrived inbound message.
+ *
+ * Invoked from the WhatsApp webhook's `after()` block, only when no
+ * deterministic flow consumed the message (flows win). It owns its
+ * try/catch and NEVER throws — a failing or slow LLM call must not affect
+ * the webhook's 200 to Meta.
+ *
+ * Silent no-ops: AI / auto-reply off, a message-level automation is active,
+ * a human owns the thread, the AI was paused here, or nothing to answer.
+ * Everything else ends in a reply or a handoff — a lead is never left in
+ * silence (reply cap reached and unreadable media both hand off).
+ */
 export async function dispatchInboundToAiReply(
   args: DispatchArgs,
 ): Promise<void> {
   const { accountId, conversationId, contactId, configOwnerUserId } = args
+  const kind = args.inboundKind ?? 'text'
+  if (kind === 'ignore') return
 
   try {
     const db = supabaseAdmin()
@@ -115,15 +222,15 @@ export async function dispatchInboundToAiReply(
     // automations (`new_message_received` / `keyword_match`) are
     // dispatched independently for this same inbound and may send their
     // own reply, so if the account has any active one we stand down to
-    // avoid double-texting the customer. (Relationship triggers like
-    // `first_inbound_message` don't count — they're not per-message
-    // auto-responders.)
+    // avoid double-texting the customer.
+    const responderTriggers = ['new_message_received', 'keyword_match']
+    if (args.inboundIsTap) responderTriggers.push('interactive_reply')
     const { data: autoResponders } = await db
       .from('automations')
       .select('id')
       .eq('account_id', accountId)
       .eq('is_active', true)
-      .in('trigger_type', ['new_message_received', 'keyword_match'])
+      .in('trigger_type', responderTriggers)
       .limit(1)
     if (autoResponders && autoResponders.length > 0) return
 
@@ -135,11 +242,46 @@ export async function dispatchInboundToAiReply(
     if (convErr || !conv) return
     if (conv.assigned_agent_id) return // a human owns this thread
     if (conv.ai_autoreply_disabled) return // handed off / turned off here
-    // Cheap early-out; the authoritative cap check is the atomic claim
-    // below (this read can race a concurrent inbound).
-    if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
 
     const messages = await buildConversationContext(db, conversationId)
+    const replyCount = (conv.ai_reply_count as number) ?? 0
+
+    // Voice note / photo without caption / document / location: the AI
+    // can't read it, so a person has to look.
+    if (kind === 'unreadable') {
+      await handOffToHuman(db, {
+        accountId,
+        conversationId,
+        contactId,
+        config,
+        messages,
+        summary: buildHandoffSummary({
+          messages,
+          replyCount,
+          reason: 'the customer sent a voice note or file the AI can’t read',
+        }),
+      })
+      return
+    }
+
+    // Reply cap reached → hand off rather than go silent. (Cheap early
+    // check; the authoritative one is the atomic slot claim below.)
+    if (replyCount >= config.autoReplyMaxPerConversation) {
+      await handOffToHuman(db, {
+        accountId,
+        conversationId,
+        contactId,
+        config,
+        messages,
+        summary: buildHandoffSummary({
+          messages,
+          replyCount,
+          reason: 'it reached its reply limit for this chat',
+        }),
+      })
+      return
+    }
+
     if (messages.length === 0) return
 
     // Account-wide throttle on the shared BYO key. The per-conversation
@@ -182,12 +324,35 @@ export async function dispatchInboundToAiReply(
     }
     await showTyping()
 
+    // Debounce quick succession: wait briefly, and if the customer has sent
+    // something newer, stand down — that message's run answers everything.
+    const debounce = replyDebounceMs()
+    if (args.inboundMessageId && debounce > 0) {
+      await sleep(debounce)
+      const { data: latest } = await db
+        .from('messages')
+        .select('message_id')
+        .eq('conversation_id', conversationId)
+        .eq('sender_type', 'customer')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (latest?.message_id && latest.message_id !== args.inboundMessageId) return
+    }
+
+    // Re-read the transcript after the wait so it includes every message
+    // the customer sent in the burst.
+    const transcript =
+      args.inboundMessageId && debounce > 0
+        ? await buildConversationContext(db, conversationId)
+        : messages
+
     // Ground the reply in the account's knowledge base (best-effort).
     const knowledge = await retrieveKnowledge(
       db,
       accountId,
       config,
-      latestUserMessage(messages),
+      latestUserMessage(transcript),
     )
 
     // What we already know about this lead — fed to the model so it doesn't
@@ -215,14 +380,11 @@ export async function dispatchInboundToAiReply(
     const { text, handoff, usage, outcome, lead, parts } = await generateReply({
       config,
       systemPrompt,
-      messages,
+      messages: transcript,
     })
 
-    // Record token spend on the account's BYO key. Fire-and-forget so it
-    // never adds latency to the customer-facing send: `logAiUsage`
-    // swallows its own errors, so the floating promise can't reject.
-    // Logged regardless of handoff — the provider call happened either
-    // way.
+    // Record token spend on the account's BYO key (fire-and-forget; logged
+    // regardless of handoff — the provider call happened either way).
     void logAiUsage(db, {
       accountId,
       conversationId,
@@ -233,68 +395,22 @@ export async function dispatchInboundToAiReply(
     })
 
     if (handoff || !text) {
-      // The model can't (or shouldn't) answer — stop auto-replying on
-      // this thread and hand it to a human. We (a) pause the bot here
-      // (sticky until re-enabled), (b) route the conversation to the
-      // configured handoff agent — null leaves it in the shared queue —
-      // and (c) leave a short internal note so whoever picks it up has
-      // context. Assigning fires the `on_conversation_assigned` trigger,
-      // which notifies the agent.
-      const summary = buildHandoffSummary({
-        messages,
-        replyCount: conv.ai_reply_count ?? 0,
-      })
-      const update: Record<string, unknown> = {
-        ai_autoreply_disabled: true,
-        ai_handoff_summary: summary,
-      }
-      // Always route to a person (never stomp an existing assignment): the
-      // configured handoff agent, else the least-busy agent. The customer
-      // message to the customer is left to the account's own
-      // `conversation_assigned` automation, which we fire below.
-      if (!conv.assigned_agent_id) {
-        let assignee: string | null = config.handoffAgentId
-        if (!assignee) {
-          try {
-            assignee = await pickHandoffAgent(db, accountId)
-          } catch (err) {
-            console.error('[ai auto-reply] picking a handoff agent failed:', err)
-          }
-        }
-        if (assignee) update.assigned_agent_id = assignee
-      }
-      await db.from('conversations').update(update).eq('id', conversationId)
-
-      // Keep what the AI learned about the lead, for whoever picks it up.
+      // The model can't (or shouldn't) answer. Keep what it learned about
+      // the lead for whoever picks it up, then hand off.
       await applyLeadOutcome(db, { ...outcomeArgs, outcome: 'needs_human', incoming: lead })
-
-      const assignedTo = update.assigned_agent_id as string | undefined
-      if (assignedTo) {
-        // The DB trigger notifies the assignee; the automation is fired by
-        // app code, so do it here (same as the manual assign route).
-        try {
-          await fireConversationAssigned(db, {
-            accountId,
-            conversationId,
-            contactId,
-            agentId: assignedTo,
-          })
-        } catch (err) {
-          console.error('[ai auto-reply] conversation_assigned automation failed:', err)
-        }
-      } else {
-        // Nobody could be assigned (no members) — ping owner + admins so the
-        // chat doesn't sit unnoticed in the queue.
-        await notifyHandoffToTeam(db, accountId, conversationId, contactId, messages)
-      }
+      await handOffToHuman(db, {
+        accountId,
+        conversationId,
+        contactId,
+        config,
+        messages: transcript,
+        summary: buildHandoffSummary({ messages: transcript, replyCount }),
+      })
       return
     }
 
     // Atomically claim a reply slot: the cap check + increment happen in
-    // one UPDATE, so concurrent inbounds can never overshoot the cap. If
-    // another inbound just took the last slot, `claimed` is false and we
-    // skip the send. (We consume a slot slightly before the send lands —
-    // fail-safe: under-reply rather than over-reply.)
+    // one UPDATE, so concurrent inbounds can never overshoot the cap.
     const { data: claimed, error: claimErr } = await db.rpc(
       'claim_ai_reply_slot',
       {
@@ -305,12 +421,26 @@ export async function dispatchInboundToAiReply(
     if (claimErr) {
       // A real error here (vs. losing the cap race) is almost always a
       // deploy issue — e.g. `claim_ai_reply_slot` not EXECUTE-able by the
-      // service role, or the migration not applied. Log it loudly: a
-      // silent return makes "auto-reply never fires" undiagnosable.
+      // service role, or the migration not applied. Log it loudly.
       console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr)
       return
     }
-    if (claimed !== true) return // lost the per-conversation cap race
+    if (claimed !== true) {
+      // Lost the race for the last slot → the cap is reached; hand off.
+      await handOffToHuman(db, {
+        accountId,
+        conversationId,
+        contactId,
+        config,
+        messages: transcript,
+        summary: buildHandoffSummary({
+          messages: transcript,
+          replyCount,
+          reason: 'it reached its reply limit for this chat',
+        }),
+      })
+      return
+    }
 
     // Send like a person texting: one message, or 2–3 short ones with a
     // "typing…" pause before each later part. The whole turn counts as one
