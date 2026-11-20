@@ -129,6 +129,9 @@ export interface GenerateResult {
   lead?: LeadCard | null;
   /** Follow-up mode: the model judged a nudge unhelpful right now. */
   skip?: boolean;
+  /** The reply split into 2–3 short WhatsApp messages; absent when it is a
+   *  single message (use `text`). */
+  parts?: string[];
 }
 
 /**

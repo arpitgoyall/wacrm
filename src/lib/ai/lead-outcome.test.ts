@@ -82,3 +82,23 @@ describe('withinSendHours', () => {
     expect(withinSendHours(new Date('2026-11-20T12:00:00Z'), night)).toBe(false)
   })
 })
+
+describe('parseGeneration — [[SPLIT]] multi-message replies', () => {
+  it('splits a reply into short messages and keeps meta out', () => {
+    const r = parseGeneration(
+      'Nice, Arpit! 😊\n[[SPLIT]]\nBCA is a great base for drones.\n[[SPLIT]]\nHobby or career?\n[[META]] {"outcome":"continue"}',
+    )
+    expect(r.parts).toEqual(['Nice, Arpit! 😊', 'BCA is a great base for drones.', 'Hobby or career?'])
+    expect(r.text).toBe('Nice, Arpit! 😊\n\nBCA is a great base for drones.\n\nHobby or career?')
+  })
+
+  it('folds anything beyond 3 messages into the last one', () => {
+    const r = parseGeneration('a[[SPLIT]]b[[SPLIT]]c[[SPLIT]]d')
+    expect(r.parts).toEqual(['a', 'b', 'c\n\nd'])
+  })
+
+  it('has no parts for a single message and ignores empty splits', () => {
+    expect(parseGeneration('Just one').parts).toBeUndefined()
+    expect(parseGeneration('One[[SPLIT]]  ').parts).toBeUndefined()
+  })
+})

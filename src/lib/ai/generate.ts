@@ -10,8 +10,10 @@ import {
 } from './types';
 import {
   HANDOFF_SENTINEL,
+  MAX_REPLY_PARTS,
   META_SENTINEL,
   SKIP_SENTINEL,
+  SPLIT_SENTINEL,
   aiRequestTimeoutMs,
 } from './defaults';
 import { generateOpenAi } from './providers/openai';
@@ -90,13 +92,30 @@ export function parseGeneration(
 
   const skip = body.includes(SKIP_SENTINEL);
   const handoff = body.includes(HANDOFF_SENTINEL) || outcome === 'needs_human';
-  const text = body
+  const cleaned = body
     .split(HANDOFF_SENTINEL)
     .join('')
     .split(SKIP_SENTINEL)
-    .join('')
-    .trim();
+    .join('');
+
+  // Short WhatsApp messages, at most MAX_REPLY_PARTS (extras fold into the
+  // last one). `text` stays the whole reply so single-message callers
+  // (drafts, follow-ups) keep working unchanged.
+  const pieces = cleaned
+    .split(SPLIT_SENTINEL)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const parts =
+    pieces.length > MAX_REPLY_PARTS
+      ? [
+          ...pieces.slice(0, MAX_REPLY_PARTS - 1),
+          pieces.slice(MAX_REPLY_PARTS - 1).join('\n\n'),
+        ]
+      : pieces;
+  const text = parts.join('\n\n');
+
   const result: GenerateResult = { text, handoff, usage };
+  if (parts.length > 1) result.parts = parts;
   // Only present when the model actually emitted them (keeps the plain
   // draft-mode result shape unchanged).
   if (metaAt !== -1) {

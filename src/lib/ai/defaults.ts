@@ -30,6 +30,12 @@ export const META_SENTINEL = '[[META]]';
 /** Follow-up mode: the model judged that a nudge would not help now. */
 export const SKIP_SENTINEL = '[[SKIP]]';
 
+/** Separates the short WhatsApp messages of one auto-reply. */
+export const SPLIT_SENTINEL = '[[SPLIT]]';
+
+/** Most messages one auto-reply may be split into. */
+export const MAX_REPLY_PARTS = 3;
+
 /** Built-in definition of a qualified lead, used when the account hasn't
  *  written its own. */
 export const DEFAULT_QUALIFICATION_CRITERIA =
@@ -92,6 +98,13 @@ export function buildSystemPrompt(args: {
   if (mode === 'auto_reply') {
     parts.push(
       `You are replying automatically with no human in the loop. If you cannot confidently and safely help — the customer explicitly asks for a human, is upset or complaining, or the request needs information you do not have — reply with exactly ${HANDOFF_SENTINEL} and nothing else. A human agent will then take over. Prefer handing off over guessing.`
+    );
+  }
+
+  if (mode === 'auto_reply' && !followup) {
+    parts.push(
+      'Message style: text like a real person on WhatsApp, not like an email. When it reads more naturally, split your reply into 2 or 3 short messages — e.g. a quick reaction, then the answer, then one question — each just a sentence or two. ' +
+        `Put a line containing only ${SPLIT_SENTINEL} between messages. Never more than ${MAX_REPLY_PARTS} messages, and keep a single short thought as one message — do not split for the sake of it. Each message must make sense on its own.`
     );
   }
 

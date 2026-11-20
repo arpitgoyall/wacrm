@@ -91,6 +91,14 @@ async function notifyHandoffToTeam(
   }
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
+
+/** A believable typing pause before a follow-on message: longer messages
+ *  take a little longer, bounded to 1.2–4s so a full reply stays quick. */
+export function typingPauseMs(message: string): number {
+  return Math.min(4000, Math.max(1200, 600 + message.length * 35))
+}
+
 export async function dispatchInboundToAiReply(
   args: DispatchArgs,
 ): Promise<void> {
@@ -150,8 +158,9 @@ export async function dispatchInboundToAiReply(
       return
     }
 
-    // Show "typing…" to the customer while we generate. Best-effort and
-    // awaited briefly (5s cap) so it lands before the slow LLM call starts.
+    // Show "typing…" to the customer while we generate (and again between
+    // the parts of a split reply). Best-effort, 5s cap per call.
+    let showTyping: () => Promise<void> = async () => {}
     if (args.inboundMessageId) {
       const { data: wa } = await db
         .from('whatsapp_config')
@@ -160,16 +169,18 @@ export async function dispatchInboundToAiReply(
         .maybeSingle()
       if (wa?.phone_number_id && wa.access_token) {
         try {
-          await sendTypingIndicator({
-            phoneNumberId: wa.phone_number_id,
+          const creds = {
+            phoneNumberId: wa.phone_number_id as string,
             accessToken: decrypt(wa.access_token),
             messageId: args.inboundMessageId,
-          })
+          }
+          showTyping = () => sendTypingIndicator(creds)
         } catch (err) {
           console.warn('[ai auto-reply] typing indicator skipped:', err)
         }
       }
     }
+    await showTyping()
 
     // Ground the reply in the account's knowledge base (best-effort).
     const knowledge = await retrieveKnowledge(
@@ -201,7 +212,7 @@ export async function dispatchInboundToAiReply(
       assignedAgentId: null,
     }
 
-    const { text, handoff, usage, outcome, lead } = await generateReply({
+    const { text, handoff, usage, outcome, lead, parts } = await generateReply({
       config,
       systemPrompt,
       messages,
@@ -301,14 +312,24 @@ export async function dispatchInboundToAiReply(
     }
     if (claimed !== true) return // lost the per-conversation cap race
 
-    await engineSendText({
-      accountId,
-      userId: configOwnerUserId,
-      conversationId,
-      contactId,
-      text,
-      aiGenerated: true,
-    })
+    // Send like a person texting: one message, or 2–3 short ones with a
+    // "typing…" pause before each later part. The whole turn counts as one
+    // reply against the per-conversation cap (one slot claimed above).
+    const messagesToSend = parts && parts.length > 1 ? parts : [text]
+    for (let i = 0; i < messagesToSend.length; i++) {
+      if (i > 0) {
+        await showTyping()
+        await sleep(typingPauseMs(messagesToSend[i]))
+      }
+      await engineSendText({
+        accountId,
+        userId: configOwnerUserId,
+        conversationId,
+        contactId,
+        text: messagesToSend[i],
+        aiGenerated: true,
+      })
+    }
 
     // After the reply lands: save the lead card and act on the outcome
     // (qualified → stage + counsellor + assigned automation; lost → stage).

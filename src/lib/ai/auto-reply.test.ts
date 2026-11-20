@@ -283,3 +283,35 @@ describe('dispatchInboundToAiReply — lead outcomes', () => {
     expect(h.applyLeadOutcome).not.toHaveBeenCalled()
   })
 })
+
+describe('dispatchInboundToAiReply — human-like split replies', () => {
+  it('sends each part in order as its own message, claiming one reply slot', async () => {
+    vi.useFakeTimers()
+    try {
+      h.generateReply.mockResolvedValue({
+        text: 'Hey!\n\nFees ₹6,999.\n\nWant the brochure?',
+        parts: ['Hey!', 'Fees ₹6,999.', 'Want the brochure?'],
+        handoff: false,
+      })
+      const run = dispatchInboundToAiReply(ARGS)
+      await vi.runAllTimersAsync()
+      await run
+      expect(h.engineSendText.mock.calls.map((c) => c[0].text)).toEqual([
+        'Hey!',
+        'Fees ₹6,999.',
+        'Want the brochure?',
+      ])
+      expect(h.state.rpcCalls).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+describe('typingPauseMs', () => {
+  it('stays between 1.2s and 4s', async () => {
+    const { typingPauseMs } = await import('./auto-reply')
+    expect(typingPauseMs('ok')).toBe(1200)
+    expect(typingPauseMs('x'.repeat(500))).toBe(4000)
+  })
+})
